@@ -23,7 +23,6 @@ const SERVICE_OPTIONS = [
 const DEFAULT_PAYMENT_INSTRUCTIONS = `You may pay through any of the following methods:
 • Cash – Pay at our office
 • GCash – Send to [GCash number]
-• Bank Transfer – [Bank details]
 • Credit Card – Accepted at office`;
 
 const statusConfig: Record<string, { bg: string; text: string; icon: React.ReactNode; label: string }> = {
@@ -423,17 +422,11 @@ export default function InvoicePage() {
               rows={5}
               value={paymentInstructions}
               onChange={(e) => setPaymentInstructions(e.target.value)}
-              placeholder="Cash, GCash, Bank Transfer, etc."
+              placeholder="Cash, GCash, etc."
               className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand resize-none"
             />
             <p className="mt-0.5 text-xs text-slate-500">
-              Tell the client how they can pay (e.g. Cash, GCash, Bank Transfer, Credit Card)
-            </p>
-          </div>
-
-          <div className="rounded-lg bg-slate-50 border border-slate-200 px-3 py-2">
-            <p className="text-xs text-slate-600">
-              <strong>Invoice number:</strong> Auto-generated (e.g. INV-0001) when you create
+              Tell the client how they can pay (e.g. Cash, GCash, Credit Card)
             </p>
           </div>
 
@@ -552,7 +545,7 @@ export default function InvoicePage() {
               rows={5}
               value={editPaymentInstructions}
               onChange={(e) => setEditPaymentInstructions(e.target.value)}
-              placeholder="Cash, GCash, Bank Transfer, etc."
+              placeholder="Cash, GCash, etc."
               className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand resize-none"
             />
           </div>

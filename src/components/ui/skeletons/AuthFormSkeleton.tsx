@@ -68,15 +68,33 @@ function FormFieldsSkeleton({ variant }: { variant: Variant }) {
 }
 
 export default function AuthFormSkeleton({ variant = "login" }: { variant?: Variant }) {
+  const isRegister = variant === "register";
+
+  const containerClass = isRegister
+    ? "h-screen flex flex-col overflow-hidden"
+    : "min-h-screen flex flex-col";
+
+  const contentWrapperClass = isRegister
+    ? "flex-1 flex min-h-0 overflow-hidden"
+    : "flex-1 flex";
+
+  const leftPanelClass = isRegister
+    ? "hidden lg:flex lg:w-1/2 relative flex-shrink-0 min-h-0 bg-slate-200 animate-pulse overflow-hidden"
+    : "hidden lg:flex lg:w-1/2 relative flex-shrink-0 min-h-0 bg-slate-200 animate-pulse";
+
+  const rightPanelClass = isRegister
+    ? "flex-1 min-h-0 flex flex-col overflow-y-auto px-6 py-12 sm:px-12 lg:px-16 bg-white"
+    : "flex-1 flex flex-col justify-center px-6 py-12 sm:px-12 lg:px-16 bg-white min-h-0";
+
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className={containerClass}>
       <LandingHeader />
-      <div className="flex-1 flex">
+      <div className={contentWrapperClass}>
         {/* Left: Image placeholder (matches login/register/forgot split layout) */}
-        <div className="hidden lg:flex lg:w-1/2 relative flex-shrink-0 min-h-0 bg-slate-200 animate-pulse" />
+        <div className={leftPanelClass} />
 
         {/* Right: Form area */}
-        <div className="flex-1 flex flex-col justify-center px-6 py-12 sm:px-12 lg:px-16 bg-white min-h-0">
+        <div className={rightPanelClass}>
           <div className="w-full max-w-md mx-auto">
             {/* Mobile logo placeholder */}
             <div className="lg:hidden mb-8">

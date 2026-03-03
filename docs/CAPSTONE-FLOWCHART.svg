@@ -1,0 +1,225 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1200" width="1600" height="1200">
+  <defs>
+    <style>
+      .swimlane-label { font-size: 16px; font-weight: bold; fill: white; }
+      .node-label { font-size: 11px; fill: #333; text-anchor: middle; }
+      .lane-header { font-size: 14px; font-weight: bold; fill: white; }
+      .arrow { stroke: #333; stroke-width: 2; fill: none; marker-end: url(#arrowhead); }
+      .arrow-label { font-size: 10px; fill: #666; }
+      .small-text { font-size: 9px; fill: #555; }
+    </style>
+    <marker id="arrowhead" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+      <polygon points="0 0, 10 3, 0 6" fill="#333" />
+    </marker>
+  </defs>
+
+  <!-- Swimlane Backgrounds -->
+  <rect x="0" y="0" width="1600" height="100" fill="#2c3e50"/>
+  <rect x="0" y="100" width="400" height="1100" fill="#ecf0f1"/>
+  <rect x="400" y="100" width="900" height="1100" fill="#fafafa"/>
+  <rect x="1300" y="100" width="300" height="1100" fill="#f0f8ff"/>
+
+  <!-- Swimlane Headers -->
+  <text x="200" y="60" class="lane-header">CLIENT</text>
+  <text x="850" y="60" class="lane-header">ADMIN</text>
+  <text x="1450" y="60" class="lane-header">TECHNICIAN</text>
+
+  <!-- Horizontal separators -->
+  <line x1="0" y1="100" x2="1600" y2="100" stroke="#999" stroke-width="1"/>
+  <line x1="400" y1="0" x2="400" y2="1200" stroke="#999" stroke-width="2"/>
+  <line x1="1300" y1="0" x2="1300" y2="1200" stroke="#999" stroke-width="2"/>
+
+  <!-- START (Terminator) -->
+  <ellipse cx="200" cy="150" rx="40" ry="25" fill="#27ae60" stroke="#1e8449" stroke-width="2"/>
+  <text x="200" y="155" class="node-label">START</text>
+
+  <!-- C1: Create Address (I/O - Parallelogram) -->
+  <path d="M 160 230 L 240 230 L 270 280 L 190 280 Z" fill="#3498db" stroke="#2980b9" stroke-width="2"/>
+  <text x="200" y="265" class="node-label" font-size="10">Create Address</text>
+  <text x="200" y="275" class="small-text">(appliances, Meralco)</text>
+
+  <!-- Arrow START to C1 -->
+  <path d="M 200 175 L 200 230" class="arrow"/>
+
+  <!-- C2: Submit Booking (I/O) -->
+  <path d="M 160 330 L 240 330 L 270 380 L 190 380 Z" fill="#3498db" stroke="#2980b9" stroke-width="2"/>
+  <text x="200" y="360" class="node-label">Submit Booking</text>
+  <text x="200" y="370" class="small-text">/book-now</text>
+
+  <!-- Arrow C1 to C2 -->
+  <path d="M 200 280 L 200 330" class="arrow"/>
+
+  <!-- A1: Review Booking (Rect) -->
+  <rect x="550" y="320" width="140" height="60" fill="#9b59b6" stroke="#6c3483" stroke-width="2" rx="3"/>
+  <text x="620" y="350" class="node-label">Review Booking</text>
+
+  <!-- Arrow C2 to A1 -->
+  <path d="M 270 355 L 550 355" class="arrow"/>
+
+  <!-- D1: Slot Available? (Diamond) -->
+  <path d="M 750 335 L 810 355 L 750 375 L 690 355 Z" fill="#f39c12" stroke="#d68910" stroke-width="2"/>
+  <text x="750" y="360" class="node-label">Slot Avail?</text>
+
+  <!-- Arrow A1 to D1 -->
+  <path d="M 690 350 L 690 355 L 750 355" class="arrow"/>
+
+  <!-- C3: Reselect date/time (Rect) -->
+  <rect x="140" y="450" width="120" height="50" fill="#e74c3c" stroke="#c0392b" stroke-width="2" rx="3"/>
+  <text x="200" y="480" class="node-label">Reselect Date/Time</text>
+
+  <!-- Arrow D1 No to C3 -->
+  <path d="M 750 375 L 750 430 L 200 430 L 200 450" class="arrow"/>
+  <text x="730" y="420" class="arrow-label">No</text>
+
+  <!-- Arrow C3 back to C2 -->
+  <path d="M 200 450 L 200 410 L 230 380" class="arrow"/>
+
+  <!-- A2: Set booking = Confirmed (Rect) -->
+  <rect x="550" y="420" width="140" height="60" fill="#9b59b6" stroke="#6c3483" stroke-width="2" rx="3"/>
+  <text x="620" y="450" class="node-label">Set Booking</text>
+  <text x="620" y="462" class="small-text">= Confirmed</text>
+
+  <!-- Arrow D1 Yes to A2 -->
+  <path d="M 810 355 L 920 355 L 920 450 L 690 450" class="arrow"/>
+  <text x="900" y="345" class="arrow-label">Yes</text>
+
+  <!-- A3: Create Project (Rect) -->
+  <rect x="550" y="520" width="140" height="60" fill="#9b59b6" stroke="#6c3483" stroke-width="2" rx="3"/>
+  <text x="620" y="545" class="node-label">Create Project</text>
+  <text x="620" y="558" class="small-text">/projects</text>
+
+  <!-- Arrow A2 to A3 -->
+  <path d="M 620 480 L 620 520" class="arrow"/>
+
+  <!-- A12: Prepare/send quotation (I/O) -->
+  <path d="M 560 610 L 640 610 L 670 660 L 590 660 Z" fill="#3498db" stroke="#2980b9" stroke-width="2"/>
+  <text x="615" y="640" class="node-label">Quotation</text>
+
+  <!-- Arrow A3 to A12 -->
+  <path d="M 620 580 L 620 610" class="arrow"/>
+
+  <!-- C4: Review Quotation (I/O) -->
+  <path d="M 160 550 L 240 550 L 270 600 L 190 600 Z" fill="#3498db" stroke="#2980b9" stroke-width="2"/>
+  <text x="200" y="580" class="node-label">Review Quotation</text>
+
+  <!-- Arrow A12 to C4 -->
+  <path d="M 590 635 L 400 635 L 300 575" class="arrow"/>
+
+  <!-- C5: Agree? (Diamond) -->
+  <path d="M 200 650 L 250 680 L 200 710 L 150 680 Z" fill="#f39c12" stroke="#d68910" stroke-width="2"/>
+  <text x="200" y="685" class="node-label">Agree?</text>
+
+  <!-- Arrow C4 to C5 -->
+  <path d="M 200 600 L 200 650" class="arrow"/>
+
+  <!-- Arrow C5 No back to A12 -->
+  <path d="M 150 680 L 100 680 L 100 635 L 590 635" class="arrow"/>
+  <text x="120" y="670" class="arrow-label">No</text>
+
+  <!-- C6: Pay 50% Downpayment (I/O) -->
+  <path d="M 160 770 L 240 770 L 270 820 L 190 820 Z" fill="#3498db" stroke="#2980b9" stroke-width="2"/>
+  <text x="200" y="795" class="node-label">Pay 50%</text>
+  <text x="200" y="805" class="small-text">Downpayment</text>
+
+  <!-- Arrow C5 Yes to C6 -->
+  <path d="M 200 710 L 200 770" class="arrow"/>
+  <text x="210" y="740" class="arrow-label">Yes</text>
+
+  <!-- A13: Record 50% Downpayment (Rect) -->
+  <rect x="550" y="760" width="140" height="60" fill="#9b59b6" stroke="#6c3483" stroke-width="2" rx="3"/>
+  <text x="620" y="785" class="node-label">Record 50%</text>
+  <text x="620" y="798" class="small-text">Downpayment</text>
+
+  <!-- Arrow C6 to A13 -->
+  <path d="M 270 795 L 550 795" class="arrow"/>
+
+  <!-- A16: Schedule Installation (Rect) -->
+  <rect x="550" y="860" width="140" height="60" fill="#9b59b6" stroke="#6c3483" stroke-width="2" rx="3"/>
+  <text x="620" y="885" class="node-label">Schedule</text>
+  <text x="620" y="898" class="small-text">Installation</text>
+
+  <!-- Arrow A13 to A16 -->
+  <path d="M 620 820 L 620 860" class="arrow"/>
+
+  <!-- A4: Assign Technician (Rect) -->
+  <rect x="1350" y="860" width="140" height="60" fill="#16a085" stroke="#117a65" stroke-width="2" rx="3"/>
+  <text x="1420" y="885" class="node-label">Assign Tech</text>
+  <text x="1420" y="898" class="small-text">/technicians</text>
+
+  <!-- Arrow A16 to A4 -->
+  <path d="M 690 890 L 1350 890" class="arrow"/>
+
+  <!-- D2: Tech Available? (Diamond) -->
+  <path d="M 1420 960 L 1470 990 L 1420 1020 L 1370 990 Z" fill="#f39c12" stroke="#d68910" stroke-width="2"/>
+  <text x="1420" y="995" class="node-label">Tech Avail?</text>
+
+  <!-- Arrow A4 to D2 -->
+  <path d="M 1420 920 L 1420 960" class="arrow"/>
+
+  <!-- A5: Set On Hold (Rect) -->
+  <rect x="1050" y="960" width="140" height="60" fill="#e74c3c" stroke="#c0392b" stroke-width="2" rx="3"/>
+  <text x="1120" y="985" class="node-label">Set Project</text>
+  <text x="1120" y="998" class="small-text">On Hold</text>
+
+  <!-- Arrow D2 No back -->
+  <path d="M 1370 990 L 1200 1000 L 1190 890" class="arrow"/>
+  <text x="1280" y="1010" class="arrow-label">No</text>
+
+  <!-- A6: Check Inventory (Rect) -->
+  <rect x="550" y="960" width="140" height="60" fill="#9b59b6" stroke="#6c3483" stroke-width="2" rx="3"/>
+  <text x="620" y="985" class="node-label">Check Inventory</text>
+
+  <!-- Arrow D2 Yes to A6 -->
+  <path d="M 1370 990 L 690 990" class="arrow"/>
+  <text x="1020" y="985" class="arrow-label">Yes</text>
+
+  <!-- D3: Stock Sufficient? (Diamond) -->
+  <path d="M 750 975 L 810 1005 L 750 1035 L 690 1005 Z" fill="#f39c12" stroke="#d68910" stroke-width="2"/>
+  <text x="750" y="1010" class="node-label">Stock OK?</text>
+
+  <!-- Arrow A6 to D3 -->
+  <path d="M 690 990 L 690 1005 L 750 1005" class="arrow"/>
+
+  <!-- A7: Reserve Materials (Rect) -->
+  <rect x="1050" y="1060" width="140" height="60" fill="#9b59b6" stroke="#6c3483" stroke-width="2" rx="3"/>
+  <text x="1120" y="1085" class="node-label">Reserve/Deduct</text>
+  <text x="1120" y="1098" class="small-text">Materials</text>
+
+  <!-- Arrow D3 Yes to A7 -->
+  <path d="M 810 1005 L 1050 1005 L 1050 1060" class="arrow"/>
+  <text x="900" y="1000" class="arrow-label">Yes</text>
+
+  <!-- A8: Purchase Request (Rect) -->
+  <rect x="550" y="1060" width="140" height="60" fill="#9b59b6" stroke="#6c3483" stroke-width="2" rx="3"/>
+  <text x="620" y="1080" class="node-label">Create Purchase</text>
+  <text x="620" y="1093" class="small-text">Request</text>
+
+  <!-- Arrow D3 No to A8 -->
+  <path d="M 750 1035 L 750 1090 L 690 1090" class="arrow"/>
+  <text x="760" y="1070" class="arrow-label">No</text>
+
+  <!-- Arrow A8 loops back to A6 -->
+  <path d="M 550 1090 L 500 1090 L 500 990 L 550 990" class="arrow"/>
+
+  <!-- T1: Receive Project (Rect) -->
+  <rect x="1350" y="1060" width="140" height="60" fill="#16a085" stroke="#117a65" stroke-width="2" rx="3"/>
+  <text x="1420" y="1080" class="node-label">Receive Project</text>
+  <text x="1420" y="1093" class="small-text">/tech/projects</text>
+
+  <!-- Arrow A7 to T1 -->
+  <path d="M 1190 1090 L 1350 1090" class="arrow"/>
+
+  <!-- Legend -->
+  <text x="50" y="50" font-size="12" font-weight="bold" fill="#333">LEGEND:</text>
+  <ellipse cx="85" cy="70" rx="15" ry="10" fill="#27ae60" stroke="#1e8449" stroke-width="1"/>
+  <text x="105" y="75" font-size="10" fill="#333">Terminator</text>
+
+  <rect x="70" y="95" width="30" height="20" fill="#9b59b6" stroke="#6c3483" stroke-width="1" rx="2"/>
+  <text x="105" y="108" font-size="10" fill="#333">Process</text>
+
+  <path d="M 85 145 L 100 135 L 85 155 L 70 145 Z" fill="#f39c12" stroke="#d68910" stroke-width="1"/>
+  <text x="105" y="150" font-size="10" fill="#333">Decision</text>
+
+  <path d="M 65 170 L 95 170 L 105 185 L 75 185 Z" fill="#3498db" stroke="#2980b9" stroke-width="1"/>
+  <text x="105" y="180" font-size="10" fill="#333">Input/Output</text>
+</svg>

@@ -12,10 +12,16 @@ const serviceType = z.enum([
 
 const bookingStatus = z.enum(["confirmed", "pending", "completed", "cancelled", "in_progress"]);
 
+/** Accepts HH:MM, H:MM, or "HH:MM AM/PM" (e.g. 09:00, 9:00, 09:00 AM, 01:00 PM) */
+const createBookingTimeSchema = z.string().min(1, "Time is required").refine(
+  (s) => /^\d{1,2}:\d{2}(\s*(?:AM|PM))?$/i.test(s.trim()),
+  "Invalid time format (e.g. 09:00 or 09:00 AM)"
+);
+
 export const createBookingSchema = z.object({
   serviceType,
   date: dateStringSchema,
-  time: z.string().min(1, "Time is required").regex(/^\d{2}:\d{2}$/, "Invalid time format (HH:MM)"),
+  time: createBookingTimeSchema,
   address: z.string().min(1, "Address is required").max(500).trim(),
   notes: optionalString,
   technician: z.string().optional(),

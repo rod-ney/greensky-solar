@@ -38,17 +38,17 @@ export default function BookingsPage() {
   const editFormRef = useRef<HTMLFormElement | null>(null);
   const [loadingDirectionsId, setLoadingDirectionsId] = useState<string | null>(null);
 
-  const openDirections = async (booking: Booking) => {
-    // Use client's pinned coordinates when available
+  const openLocation = async (booking: Booking) => {
+    // Use client's pinned coordinates when available — opens map with pin at exact lat/lng
     if (typeof booking.lat === "number" && typeof booking.lng === "number") {
       window.open(
-        `https://www.google.com/maps/dir/?api=1&destination=${booking.lat},${booking.lng}`,
+        `https://www.google.com/maps?q=${booking.lat},${booking.lng}`,
         "_blank",
         "noopener,noreferrer"
       );
       return;
     }
-    // Fallback: geocode address
+    // Fallback: geocode address to get coordinates, then show pin
     const addr = booking.address?.trim();
     if (!addr) return;
     setLoadingDirectionsId(booking.id);
@@ -61,7 +61,7 @@ export default function BookingsPage() {
       const data = (await res.json()) as { lat: string; lon: string }[];
       if (data?.[0]?.lat != null && data?.[0]?.lon != null) {
         window.open(
-          `https://www.google.com/maps/dir/?api=1&destination=${data[0].lat},${data[0].lon}`,
+          `https://www.google.com/maps?q=${data[0].lat},${data[0].lon}`,
           "_blank",
           "noopener,noreferrer"
         );
@@ -299,9 +299,9 @@ export default function BookingsPage() {
                       <div className="flex justify-end gap-1">
                         {booking.address?.trim() ? (
                           <button
-                            onClick={() => openDirections(booking)}
+                            onClick={() => openLocation(booking)}
                             disabled={loadingDirectionsId === booking.id}
-                            title="Get directions (exact location)"
+                            title="Get Location"
                             className="flex h-7 w-7 items-center justify-center rounded text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors disabled:opacity-70"
                           >
                             {loadingDirectionsId === booking.id ? (

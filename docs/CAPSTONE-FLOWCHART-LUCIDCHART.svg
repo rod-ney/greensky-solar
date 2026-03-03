@@ -1,0 +1,244 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1800 1400" width="1800" height="1400">
+  <defs>
+    <style>
+      body { font-family: 'Segoe UI', Arial, sans-serif; }
+      .lane-bg { fill-opacity: 0.05; }
+      .lane-header { font-size: 18px; font-weight: 600; letter-spacing: 0.5px; }
+      .node-text { font-size: 12px; font-weight: 500; text-anchor: middle; }
+      .node-subtext { font-size: 10px; fill: #666; text-anchor: middle; }
+      .arrow { stroke: #333; stroke-width: 2.5; fill: none; marker-end: url(#arrowhead); }
+      .arrow-dash { stroke: #e74c3c; stroke-width: 2.5; fill: none; stroke-dasharray: 5,5; marker-end: url(#arrowhead-red); }
+      .arrow-label { font-size: 11px; font-weight: 600; fill: #2c3e50; background: white; }
+      .decision-shadow { filter: drop-shadow(2px 2px 4px rgba(0,0,0,0.1)); }
+      .process-shadow { filter: drop-shadow(1px 1px 3px rgba(0,0,0,0.08)); }
+    </style>
+    <marker id="arrowhead" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+      <polygon points="0 0, 10 3, 0 6" fill="#333" />
+    </marker>
+    <marker id="arrowhead-red" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+      <polygon points="0 0, 10 3, 0 6" fill="#e74c3c" />
+    </marker>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1800" height="1400" fill="#f8f9fa"/>
+
+  <!-- Title -->
+  <rect x="20" y="15" width="1760" height="50" fill="#2c3e50" rx="5"/>
+  <text x="900" y="47" class="lane-header" fill="white" text-anchor="middle">GreenSky Solar System - Booking to Project Completion Flow</text>
+
+  <!-- Swimlane Background -->
+  <rect x="30" y="80" width="500" height="1300" fill="#e8f4f8" stroke="#3498db" stroke-width="2" rx="3"/>
+  <rect x="530" y="80" width="800" height="1300" fill="#fef9e7" stroke="#f39c12" stroke-width="2" rx="3"/>
+  <rect x="1330" y="80" width="440" height="1300" fill="#e8f8f5" stroke="#16a085" stroke-width="2" rx="3"/>
+
+  <!-- Swimlane Headers -->
+  <rect x="30" y="80" width="500" height="45" fill="#3498db" rx="3"/>
+  <text x="280" y="110" class="lane-header" fill="white">CLIENT</text>
+
+  <rect x="530" y="80" width="800" height="45" fill="#f39c12" rx="3"/>
+  <text x="930" y="110" class="lane-header" fill="white">ADMIN</text>
+
+  <rect x="1330" y="80" width="440" height="45" fill="#16a085" rx="3"/>
+  <text x="1550" y="110" class="lane-header" fill="white">TECHNICIAN</text>
+
+  <!-- Vertical lanes dividers -->
+  <line x1="530" y1="80" x2="530" y2="1380" stroke="#999" stroke-width="1" opacity="0.5"/>
+  <line x1="1330" y1="80" x2="1330" y2="1380" stroke="#999" stroke-width="1" opacity="0.5"/>
+
+  <!-- START (Oval) -->
+  <ellipse cx="280" cy="160" rx="45" ry="30" fill="#27ae60" stroke="#229954" stroke-width="2.5" class="process-shadow"/>
+  <text x="280" y="168" class="node-text" fill="white">START</text>
+
+  <!-- C1: Create Address (Parallelogram - I/O) -->
+  <path d="M 200 250 L 360 250 L 380 320 L 180 320 Z" fill="#3498db" stroke="#2980b9" stroke-width="2.5" class="process-shadow"/>
+  <text x="280" y="282" class="node-text" fill="white">Create Address</text>
+  <text x="280" y="298" class="node-subtext" fill="white">&amp; Site Profile</text>
+
+  <!-- Arrow START to C1 -->
+  <path d="M 280 190 L 280 250" class="arrow"/>
+
+  <!-- C2: Submit Booking (Parallelogram - I/O) -->
+  <path d="M 200 380 L 360 380 L 380 450 L 180 450 Z" fill="#3498db" stroke="#2980b9" stroke-width="2.5" class="process-shadow"/>
+  <text x="280" y="410" class="node-text" fill="white">Submit Booking</text>
+  <text x="280" y="427" class="node-subtext" fill="white">/book-now</text>
+
+  <!-- Arrow C1 to C2 -->
+  <path d="M 280 320 L 280 380" class="arrow"/>
+
+  <!-- A1: Review Booking (Rectangle) -->
+  <rect x="680" y="380" width="160" height="70" fill="#f39c12" stroke="#d68910" stroke-width="2.5" rx="5" class="process-shadow"/>
+  <text x="760" y="412" class="node-text" fill="white">Review Booking</text>
+  <text x="760" y="428" class="node-subtext" fill="white">/bookings</text>
+
+  <!-- Arrow C2 to A1 -->
+  <path d="M 380 415 L 680 415" class="arrow"/>
+
+  <!-- D1: Slot Available? (Diamond) -->
+  <path d="M 900 380 L 980 415 L 900 450 L 820 415 Z" fill="#e67e22" stroke="#d35400" stroke-width="2.5" class="decision-shadow"/>
+  <text x="900" y="420" class="node-text" fill="white">Slot</text>
+  <text x="900" y="433" class="node-text" fill="white">Available?</text>
+
+  <!-- Arrow A1 to D1 -->
+  <path d="M 840 415 L 820 415" class="arrow"/>
+
+  <!-- C3: Reselect Date/Time (Rectangle) -->
+  <rect x="200" y="540" width="160" height="70" fill="#e74c3c" stroke="#c0392b" stroke-width="2.5" rx="5" class="process-shadow"/>
+  <text x="280" y="572" class="node-text" fill="white">Reselect</text>
+  <text x="280" y="588" class="node-subtext" fill="white">Date/Time</text>
+
+  <!-- Arrow D1 "No" to C3 (Dashed Loop) -->
+  <path d="M 900 450 L 900 510 L 280 510 L 280 540" class="arrow-dash"/>
+  <text x="920" y="485" class="arrow-label">No</text>
+
+  <!-- Arrow C3 back to C2 -->
+  <path d="M 280 540 L 280 480 L 360 450" class="arrow"/>
+
+  <!-- A2: Set Booking = Confirmed (Rectangle) -->
+  <rect x="680" y="510" width="160" height="70" fill="#f39c12" stroke="#d68910" stroke-width="2.5" rx="5" class="process-shadow"/>
+  <text x="760" y="542" class="node-text" fill="white">Set Booking</text>
+  <text x="760" y="558" class="node-subtext" fill="white">= Confirmed</text>
+
+  <!-- Arrow D1 "Yes" to A2 -->
+  <path d="M 980 415 L 1050 415 L 1050 545 L 840 545" class="arrow"/>
+  <text x="1030" y="400" class="arrow-label" font-weight="bold">Yes</text>
+
+  <!-- A3: Create Project (Rectangle) -->
+  <rect x="680" y="630" width="160" height="70" fill="#f39c12" stroke="#d68910" stroke-width="2.5" rx="5" class="process-shadow"/>
+  <text x="760" y="662" class="node-text" fill="white">Create Project</text>
+  <text x="760" y="678" class="node-subtext" fill="white">/projects</text>
+
+  <!-- Arrow A2 to A3 -->
+  <path d="M 760 580 L 760 630" class="arrow"/>
+
+  <!-- A12: Prepare Quotation (Parallelogram - I/O) -->
+  <path d="M 640 750 L 800 750 L 820 820 L 620 820 Z" fill="#f39c12" stroke="#d68910" stroke-width="2.5" class="process-shadow"/>
+  <text x="720" y="778" class="node-text" fill="white">Prepare &amp;</text>
+  <text x="720" y="794" class="node-text" fill="white">Send Quotation</text>
+
+  <!-- Arrow A3 to A12 -->
+  <path d="M 760 700 L 760 750" class="arrow"/>
+
+  <!-- C4: Review Quotation (Parallelogram - I/O) -->
+  <path d="M 200 660 L 360 660 L 380 730 L 180 730 Z" fill="#3498db" stroke="#2980b9" stroke-width="2.5" class="process-shadow"/>
+  <text x="280" y="690" class="node-text" fill="white">Review</text>
+  <text x="280" y="706" class="node-text" fill="white">Quotation</text>
+
+  <!-- Arrow A12 to C4 -->
+  <path d="M 620 785 L 530 785 L 380 695" class="arrow"/>
+
+  <!-- C5: Agree to Quotation? (Diamond) -->
+  <path d="M 220 790 L 300 830 L 220 870 L 140 830 Z" fill="#e67e22" stroke="#d35400" stroke-width="2.5" class="decision-shadow"/>
+  <text x="220" y="835" class="node-text" fill="white">Agree?</text>
+
+  <!-- Arrow C4 to C5 -->
+  <path d="M 280 730 L 280 790" class="arrow"/>
+
+  <!-- Arrow C5 "No" back to A12 (Dashed) -->
+  <path d="M 140 830 L 80 830 L 80 785 L 620 785" class="arrow-dash"/>
+  <text x="100" y="820" class="arrow-label">No</text>
+
+  <!-- C6: Pay 50% Downpayment (Parallelogram - I/O) -->
+  <path d="M 200 930 L 360 930 L 380 1000 L 180 1000 Z" fill="#3498db" stroke="#2980b9" stroke-width="2.5" class="process-shadow"/>
+  <text x="280" y="960" class="node-text" fill="white">Pay 50%</text>
+  <text x="280" y="976" class="node-subtext" fill="white">Downpayment</text>
+
+  <!-- Arrow C5 "Yes" to C6 -->
+  <path d="M 220 870 L 220 900 L 280 900 L 280 930" class="arrow"/>
+  <text x="225" y="895" class="arrow-label" font-weight="bold">Yes</text>
+
+  <!-- A13: Record 50% Downpayment (Rectangle) -->
+  <rect x="680" y="890" width="160" height="70" fill="#f39c12" stroke="#d68910" stroke-width="2.5" rx="5" class="process-shadow"/>
+  <text x="760" y="922" class="node-text" fill="white">Record 50%</text>
+  <text x="760" y="938" class="node-subtext" fill="white">Downpayment</text>
+
+  <!-- Arrow C6 to A13 -->
+  <path d="M 380 965 L 680 925" class="arrow"/>
+
+  <!-- A16: Schedule Installation (Rectangle) -->
+  <rect x="680" y="1010" width="160" height="70" fill="#f39c12" stroke="#d68910" stroke-width="2.5" rx="5" class="process-shadow"/>
+  <text x="760" y="1042" class="node-text" fill="white">Schedule Solar</text>
+  <text x="760" y="1058" class="node-subtext" fill="white">Installation</text>
+
+  <!-- Arrow A13 to A16 -->
+  <path d="M 760 960 L 760 1010" class="arrow"/>
+
+  <!-- A4: Assign Technician (Rectangle) -->
+  <rect x="1380" y="1010" width="160" height="70" fill="#16a085" stroke="#138d75" stroke-width="2.5" rx="5" class="process-shadow"/>
+  <text x="1460" y="1042" class="node-text" fill="white">Assign</text>
+  <text x="1460" y="1058" class="node-subtext" fill="white">Technician</text>
+
+  <!-- Arrow A16 to A4 -->
+  <path d="M 840 1045 L 1380 1045" class="arrow"/>
+
+  <!-- D2: Technician Available? (Diamond) -->
+  <path d="M 1420 1110 L 1500 1150 L 1420 1190 L 1340 1150 Z" fill="#229954" stroke="#1e8449" stroke-width="2.5" class="decision-shadow"/>
+  <text x="1420" y="1150" class="node-text" fill="white">Tech</text>
+  <text x="1420" y="1166" class="node-text" fill="white">Available?</text>
+
+  <!-- Arrow A4 to D2 -->
+  <path d="M 1460 1080 L 1460 1110" class="arrow"/>
+
+  <!-- A6: Check Inventory (Rectangle) -->
+  <rect x="680" y="1130" width="160" height="70" fill="#f39c12" stroke="#d68910" stroke-width="2.5" rx="5" class="process-shadow"/>
+  <text x="760" y="1162" class="node-text" fill="white">Check</text>
+  <text x="760" y="1178" class="node-subtext" fill="white">Inventory</text>
+
+  <!-- Arrow D2 "Yes" to A6 -->
+  <path d="M 1340 1150 L 840 1150 L 840 1165" class="arrow"/>
+  <text x="1080" y="1140" class="arrow-label" font-weight="bold">Yes</text>
+
+  <!-- D3: Stock Sufficient? (Diamond) -->
+  <path d="M 900 1200 L 980 1240 L 900 1280 L 820 1240 Z" fill="#e67e22" stroke="#d35400" stroke-width="2.5" class="decision-shadow"/>
+  <text x="900" y="1245" class="node-text" fill="white">Stock</text>
+  <text x="900" y="1258" class="node-text" fill="white">OK?</text>
+
+  <!-- Arrow A6 to D3 -->
+  <path d="M 840 1165 L 820 1240" class="arrow"/>
+
+  <!-- T1: Receive Project (Rectangle) -->
+  <rect x="1380" y="1200" width="160" height="70" fill="#16a085" stroke="#138d75" stroke-width="2.5" rx="5" class="process-shadow"/>
+  <text x="1460" y="1232" class="node-text" fill="white">Receive</text>
+  <text x="1460" y="1248" class="node-subtext" fill="white">Project</text>
+
+  <!-- Arrow D3 "Yes" to T1 -->
+  <path d="M 980 1240 L 1380 1235" class="arrow"/>
+  <text x="1150" y="1230" class="arrow-label">Yes</text>
+
+  <!-- A8: Purchase Request (Rectangle) -->
+  <rect x="680" y="1250" width="160" height="70" fill="#f39c12" stroke="#d68910" stroke-width="2.5" rx="5" class="process-shadow"/>
+  <text x="760" y="1282" class="node-text" fill="white">Create Purchase</text>
+  <text x="760" y="1298" class="node-subtext" fill="white">Request</text>
+
+  <!-- Arrow D3 "No" to A8 -->
+  <path d="M 900 1280 L 900 1320 L 840 1320 L 840 1285" class="arrow-dash"/>
+  <text x="895" y="1305" class="arrow-label">No</text>
+
+  <!-- End marker for A8 loop back to A6 -->
+  <path d="M 680 1285 L 600 1285 L 600 1165 L 680 1165" stroke="#999" stroke-width="1" stroke-dasharray="3,3" fill="none"/>
+  <text x="580" y="1225" font-size="9" fill="#999">Retry</text>
+
+  <!-- Legend -->
+  <g transform="translate(50, 1350)">
+    <text x="0" y="0" font-size="11" font-weight="bold" fill="#2c3e50">LEGEND:</text>
+    
+    <!-- Terminator -->
+    <ellipse cx="80" cy="0" rx="12" ry="8" fill="#27ae60" stroke="#229954" stroke-width="1.5"/>
+    <text x="100" y="4" font-size="10" fill="#2c3e50">Start/End</text>
+
+    <!-- Rectangle -->
+    <rect x="65" y="12" width="30" height="24" fill="#f39c12" stroke="#d68910" stroke-width="1.5" rx="2"/>
+    <text x="100" y="28" font-size="10" fill="#2c3e50">Process</text>
+
+    <!-- Diamond -->
+    <path d="M 80 45 L 92 52 L 80 59 L 68 52 Z" fill="#e67e22" stroke="#d35400" stroke-width="1.5"/>
+    <text x="100" y="56" font-size="10" fill="#2c3e50">Decision</text>
+
+    <!-- Parallelogram -->
+    <path d="M 65 70 L 92 70 L 100 85 L 73 85 Z" fill="#3498db" stroke="#2980b9" stroke-width="1.5"/>
+    <text x="100" y="82" font-size="10" fill="#2c3e50">Input/Output</text>
+  </g>
+
+  <!-- Footer -->
+  <text x="900" y="1395" font-size="10" fill="#999" text-anchor="middle">Capstone Project: GreenSky Solar Management System | Process Flow Documentation</text>
+</svg>

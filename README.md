@@ -18,7 +18,7 @@ cp .env.example .env.local
 Example:
 
 ```env
-DATABASE_URL=postgres://postgres:postgres@localhost:5432/greensky_solar
+DATABASE_URL=postgres://postgres:postgres@localhost:5432/greensky_solar_p
 ```
 
 ## Database Setup

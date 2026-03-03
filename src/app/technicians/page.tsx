@@ -6,7 +6,6 @@ import {
   Plus,
   Mail,
   Phone,
-  Star,
   FolderKanban,
   Briefcase,
 } from "lucide-react";
@@ -177,7 +176,7 @@ export default function TechniciansPage() {
               </div>
             </div>
 
-            <div className="mt-4 grid grid-cols-3 gap-3">
+            <div className="mt-4 grid grid-cols-2 gap-3">
               <div className="text-center rounded-lg bg-slate-50 py-2">
                 <p className="text-lg font-bold text-slate-900">{tech.projectsCompleted}</p>
                 <p className="text-[10px] text-slate-500">Completed</p>
@@ -185,13 +184,6 @@ export default function TechniciansPage() {
               <div className="text-center rounded-lg bg-slate-50 py-2">
                 <p className="text-lg font-bold text-slate-900">{tech.activeProjects}</p>
                 <p className="text-[10px] text-slate-500">Active</p>
-              </div>
-              <div className="text-center rounded-lg bg-slate-50 py-2">
-                <div className="flex items-center justify-center gap-0.5">
-                  <Star className="h-3.5 w-3.5 text-amber-400 fill-amber-400" />
-                  <p className="text-lg font-bold text-slate-900">{tech.rating}</p>
-                </div>
-                <p className="text-[10px] text-slate-500">Rating</p>
               </div>
             </div>
 
@@ -265,22 +257,7 @@ export default function TechniciansPage() {
                 </div>
               </div>
 
-              {/* Performance Bar */}
-              <div className="mt-4">
-                <div className="flex items-center justify-between mb-1.5">
-                  <span className="text-xs font-medium text-slate-600">Performance Rating</span>
-                  <span className="flex items-center gap-1 text-xs font-semibold text-amber-600">
-                    <Star className="h-3.5 w-3.5 fill-amber-400 text-amber-400" />
-                    {selected.rating} / 5.0
-                  </span>
-                </div>
-                <div className="h-2 w-full overflow-hidden rounded-full bg-slate-100">
-                  <div
-                    className="h-full rounded-full bg-amber-400 transition-all"
-                    style={{ width: `${(selected.rating / 5) * 100}%` }}
-                  />
-                </div>
-              </div>
+
             </div>
           </div>
         </div>

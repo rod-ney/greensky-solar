@@ -23,9 +23,7 @@ import LandingHeader from "@/components/layout/LandingHeader";
 import ChatBot from "@/components/ChatBot";
 import ScrollToTop from "@/components/ScrollToTop";
 import AnimatedSection from "@/components/landing/AnimatedSection";
-import AnimatedCounter from "@/components/landing/AnimatedCounter";
 import ParallaxImage from "@/components/landing/ParallaxImage";
-import TestimonialsSection from "@/components/landing/TestimonialsSection";
 
 const SERVICES = [
   {
@@ -216,48 +214,7 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* Stats Section */}
-      <section className="py-16 sm:py-20 bg-slate-50 border-y border-slate-200">
-        <div className="container mx-auto px-4 sm:px-6 max-w-7xl">
-          <motion.div
-            className="grid grid-cols-2 lg:grid-cols-4 gap-6 sm:gap-8"
-            initial="hidden"
-            whileInView="visible"
-            viewport={{ once: true, margin: "-50px" }}
-            variants={{
-              hidden: {},
-              visible: {
-                transition: { staggerChildren: 0.1, delayChildren: 0.1 },
-              },
-            }}
-          >
-            {[
-              { value: 500, suffix: "+", label: "Installations" },
-              { value: 70, suffix: "%", label: "Avg. Savings" },
-              { value: 5, suffix: "+", label: "Years in Business" },
-              { value: 100, suffix: "%", label: "Satisfaction" },
-            ].map((stat) => (
-              <motion.div
-                key={stat.label}
-                variants={{
-                  hidden: { opacity: 0, y: 20 },
-                  visible: { opacity: 1, y: 0 },
-                }}
-                className="rounded-2xl border border-slate-200 bg-white p-6 sm:p-8 shadow-sm text-center"
-              >
-                <p className="text-3xl sm:text-4xl font-bold text-brand mb-1">
-                  <AnimatedCounter
-                    end={stat.value}
-                    suffix={stat.suffix}
-                    duration={1.5}
-                  />
-                </p>
-                <p className="text-sm font-medium text-slate-600">{stat.label}</p>
-              </motion.div>
-            ))}
-          </motion.div>
-        </div>
-      </section>
+
 
       {/* About GreenSky Solar */}
       <section id="about" className="py-16 sm:py-24 bg-white">
@@ -374,8 +331,6 @@ export default function LandingPage() {
           </motion.div>
         </div>
       </section>
-
-      <TestimonialsSection />
 
       {/* CTA Section */}
       <section className="relative py-16 sm:py-24 bg-brand overflow-hidden">

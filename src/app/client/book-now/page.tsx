@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import {
   CheckCircle2,
   MapPin,
@@ -254,6 +255,22 @@ export default function BookNowPage() {
         {currentStep === 1 && (
           <div className="space-y-4">
             <h2 className="text-sm font-semibold text-slate-900">1. Select Saved Address</h2>
+            {savedAddresses.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-amber-200 bg-amber-50 p-6 text-center">
+                <p className="text-sm font-medium text-amber-800">
+                  You need at least one saved address to book a service.
+                </p>
+                <p className="mt-1 text-xs text-amber-700">
+                  Add your address first, then return here to schedule your appointment.
+                </p>
+                <Link
+                  href="/client/address"
+                  className="mt-4 inline-flex items-center justify-center rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700 transition-colors"
+                >
+                  Add Address
+                </Link>
+              </div>
+            ) : (
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               {savedAddresses.map((address) => {
                 const selected = selectedAddressId === address.id;
@@ -280,6 +297,7 @@ export default function BookNowPage() {
                 );
               })}
             </div>
+            )}
           </div>
         )}
 

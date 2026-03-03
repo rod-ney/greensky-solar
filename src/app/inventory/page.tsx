@@ -156,6 +156,8 @@ export default function InventoryPage() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null);
+  const [showMovementDetailModal, setShowMovementDetailModal] = useState(false);
+  const [selectedMovement, setSelectedMovement] = useState<InventoryMovement | null>(null);
 
   // Add item form state
   const [addName, setAddName] = useState("");
@@ -721,7 +723,14 @@ export default function InventoryPage() {
                   </thead>
                   <tbody>
                     {filteredMovements.map((m) => (
-                      <tr key={m.id} className="border-b border-slate-50 last:border-b-0 hover:bg-slate-50/50">
+                      <tr
+                        key={m.id}
+                        className="border-b border-slate-50 last:border-b-0 hover:bg-slate-50/50 cursor-pointer"
+                        onClick={() => {
+                          setSelectedMovement(m);
+                          setShowMovementDetailModal(true);
+                        }}
+                      >
                         <td className="px-5 py-3 text-sm text-slate-600 whitespace-nowrap">
                           {new Date(m.createdAt).toLocaleDateString("en-US", {
                             month: "short",
@@ -784,6 +793,100 @@ export default function InventoryPage() {
           </div>
         </div>
       )}
+
+      {/* Movement Detail Modal */}
+      <Modal
+        isOpen={showMovementDetailModal}
+        onClose={() => {
+          setShowMovementDetailModal(false);
+          setSelectedMovement(null);
+        }}
+        title="Movement Details"
+        size="md"
+      >
+        {selectedMovement && (
+          <div className="space-y-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 className="text-base font-semibold text-slate-900">{selectedMovement.itemName}</h3>
+                <p className="mt-0.5 text-xs font-mono text-slate-500">{selectedMovement.itemSku}</p>
+              </div>
+              <span
+                className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium ${
+                  selectedMovement.movementType === "deduction"
+                    ? "bg-red-50 border-red-200 text-red-700"
+                    : selectedMovement.movementType === "return"
+                    ? "bg-green-50 border-green-200 text-green-700"
+                    : "bg-blue-50 border-blue-200 text-blue-700"
+                }`}
+              >
+                {selectedMovement.movementType === "deduction" && <ArrowDownCircle className="h-3 w-3" />}
+                {selectedMovement.movementType === "return" && <ArrowUpCircle className="h-3 w-3" />}
+                {selectedMovement.movementType === "adjustment" && <Wrench className="h-3 w-3" />}
+                {selectedMovement.movementType.charAt(0).toUpperCase() + selectedMovement.movementType.slice(1)}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="rounded-lg bg-slate-50 p-3">
+                <p className="text-xs text-slate-500">Quantity</p>
+                <p
+                  className={`mt-0.5 text-lg font-bold ${
+                    selectedMovement.quantity < 0 ? "text-red-600" : "text-green-600"
+                  }`}
+                >
+                  {selectedMovement.quantity > 0 ? "+" : ""}
+                  {selectedMovement.quantity}
+                </p>
+              </div>
+              <div className="rounded-lg bg-slate-50 p-3">
+                <p className="text-xs text-slate-500">Date & Time</p>
+                <p className="mt-0.5 text-sm font-medium text-slate-900">
+                  {new Date(selectedMovement.createdAt).toLocaleDateString("en-US", {
+                    month: "short",
+                    day: "numeric",
+                    year: "numeric",
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}
+                </p>
+              </div>
+            </div>
+
+            <div className="rounded-lg bg-slate-50 p-3">
+              <p className="text-xs text-slate-500">Project</p>
+              <p className="mt-0.5 text-sm font-medium text-slate-900">
+                {selectedMovement.projectName ?? "—"}
+              </p>
+            </div>
+
+            <div className="rounded-lg bg-slate-50 p-3">
+              <p className="text-xs text-slate-500">Reason</p>
+              <p className="mt-0.5 text-sm text-slate-900">{selectedMovement.reason}</p>
+            </div>
+
+            <div className="rounded-lg bg-slate-50 p-3">
+              <p className="text-xs text-slate-500">Performed By</p>
+              <p className="mt-0.5 text-sm font-medium text-slate-900">
+                {selectedMovement.performedByName ?? "System"}
+              </p>
+            </div>
+
+            <div className="flex justify-end border-t border-slate-100 pt-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setShowMovementDetailModal(false);
+                  setSelectedMovement(null);
+                }}
+              >
+                Close
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
 
       {/* Item Detail / Edit Modal */}
       <Modal
