@@ -9,7 +9,7 @@ export const loginSchema = z.object({
 export const registerSchema = z.object({
   name: z.string().min(1, "Name is required").max(200).trim(),
   email: emailSchema,
-  password: z.string().min(6, "Password must be at least 6 characters"),
+  password: passwordSchema,
   contactNumber: z
     .string()
     .transform((s) => s.replace(/\D/g, ""))

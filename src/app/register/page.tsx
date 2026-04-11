@@ -18,30 +18,69 @@ export default function RegisterPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [error, setError] = useState("");
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const passwordRequirements = {
+    length: password.length >= 8,
+    capital: /[A-Z]/.test(password),
+    number: /\d/.test(password),
+    special: /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password),
+  };
+  const passwordScore = [passwordRequirements.length, passwordRequirements.capital, passwordRequirements.number, passwordRequirements.special].filter(Boolean).length;
+  const passwordProgress = password.length > 0 ? (passwordScore / 4) * 100 : 0;
+
+  const clearFieldError = (field: string) => {
+    setFieldErrors((prev) => {
+      if (!prev[field]) return prev;
+      const next = { ...prev };
+      delete next[field];
+      return next;
+    });
+  };
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setError("");
 
-    const name = `${firstName} ${lastName}`.trim();
+    const errors: Record<string, string> = {};
+
+    if (!firstName.trim()) errors.firstName = "First name is required.";
+    if (!lastName.trim()) errors.lastName = "Last name is required.";
+    if (!email.trim()) errors.email = "Email address is required.";
+
     const digitsOnly = contactNumber.replace(/\D/g, "");
-    if (!name || !email.trim() || !password || !confirmPassword) {
-      setError("Please complete all required fields.");
+    if (!digitsOnly) {
+      errors.contactNumber = "Contact number is required.";
+    } else if (digitsOnly.length !== 10) {
+      errors.contactNumber = "Contact number must be exactly 10 digits.";
+    }
+
+    if (!password) {
+      errors.password = "Password is required.";
+    } else if (password.length < 8) {
+      errors.password = "Password must be at least 8 characters.";
+    } else if (!/[A-Z]/.test(password)) {
+      errors.password = "Password must contain at least one capital letter.";
+    } else if (!/\d/.test(password)) {
+      errors.password = "Password must contain at least one number.";
+    } else if (!/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password)) {
+      errors.password = "Password must contain at least one special character.";
+    }
+
+    if (!confirmPassword) {
+      errors.confirmPassword = "Please confirm your password.";
+    } else if (password && confirmPassword !== password) {
+      errors.confirmPassword = "Passwords do not match.";
+    }
+
+    if (Object.keys(errors).length > 0) {
+      setFieldErrors(errors);
       return;
     }
-    if (digitsOnly.length !== 10 || !/^\d{10}$/.test(digitsOnly)) {
-      setError("Contact number must be exactly 10 digits.");
-      return;
-    }
-    if (password !== confirmPassword) {
-      setError("Passwords do not match.");
-      return;
-    }
-    if (password.length < 6) {
-      setError("Password must be at least 6 characters.");
-      return;
-    }
+
+    setFieldErrors({});
+    const name = `${firstName} ${lastName}`.trim();
 
     try {
       setIsSubmitting(true);
@@ -115,7 +154,7 @@ export default function RegisterPage() {
 
           <h1 className="text-3xl font-bold text-slate-900">Create your account</h1>
           <p className="mt-1 text-base text-slate-500">
-            Register to start using GreenSky Solar.
+            Register to start using Greensky Solar.
           </p>
 
           {error && (
@@ -138,9 +177,15 @@ export default function RegisterPage() {
                   type="text"
                   placeholder="Juan"
                   value={firstName}
-                  onChange={(event) => setFirstName(event.target.value)}
-                  className="w-full rounded-lg border border-slate-300 px-4 py-3 text-base outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
+                  onChange={(event) => {
+                    setFirstName(event.target.value);
+                    clearFieldError("firstName");
+                  }}
+                  className={`w-full rounded-lg border px-4 py-3 text-base outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20 ${fieldErrors.firstName ? "border-red-500" : "border-slate-300"}`}
                 />
+                {fieldErrors.firstName && (
+                  <p className="mt-1 text-sm text-red-600">{fieldErrors.firstName}</p>
+                )}
               </div>
 
               <div>
@@ -155,9 +200,15 @@ export default function RegisterPage() {
                   type="text"
                   placeholder="Dela Cruz"
                   value={lastName}
-                  onChange={(event) => setLastName(event.target.value)}
-                  className="w-full rounded-lg border border-slate-300 px-4 py-3 text-base outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
+                  onChange={(event) => {
+                    setLastName(event.target.value);
+                    clearFieldError("lastName");
+                  }}
+                  className={`w-full rounded-lg border px-4 py-3 text-base outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20 ${fieldErrors.lastName ? "border-red-500" : "border-slate-300"}`}
                 />
+                {fieldErrors.lastName && (
+                  <p className="mt-1 text-sm text-red-600">{fieldErrors.lastName}</p>
+                )}
               </div>
             </div>
 
@@ -173,9 +224,15 @@ export default function RegisterPage() {
                 type="email"
                 placeholder="you@example.com"
                 value={email}
-                onChange={(event) => setEmail(event.target.value)}
-                className="w-full rounded-lg border border-slate-300 px-4 py-3 text-base outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
+                onChange={(event) => {
+                  setEmail(event.target.value);
+                  clearFieldError("email");
+                }}
+                className={`w-full rounded-lg border px-4 py-3 text-base outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20 ${fieldErrors.email ? "border-red-500" : "border-slate-300"}`}
               />
+              {fieldErrors.email && (
+                <p className="mt-1 text-sm text-red-600">{fieldErrors.email}</p>
+              )}
             </div>
 
             <div>
@@ -185,9 +242,10 @@ export default function RegisterPage() {
               >
                 Contact Number
               </label>
-              <div className="flex items-center overflow-hidden rounded-lg border border-slate-300 focus-within:border-brand focus-within:ring-2 focus-within:ring-brand/20">
-                <span className="border-r border-slate-300 bg-slate-50 px-3 py-3 text-base font-medium text-slate-600">
-                  +63
+              <div className={`flex items-center overflow-hidden rounded-lg border focus-within:border-brand focus-within:ring-2 focus-within:ring-brand/20 ${fieldErrors.contactNumber ? "border-red-500" : "border-slate-300"}`}>
+                <span className="flex items-center justify-center gap-1.5 px-3 py-3">
+                  <Image src="/ph.svg" alt="Philippines" width={24} height={24} className="h-6 w-6" />
+                  <span>+63</span>
                 </span>
                 <input
                   id="contactNumber"
@@ -198,11 +256,16 @@ export default function RegisterPage() {
                   onChange={(event) => {
                     const digitsOnly = event.target.value.replace(/\D/g, "").slice(0, 10);
                     setContactNumber(digitsOnly);
+                    clearFieldError("contactNumber");
                   }}
                   className="w-full px-4 py-3 text-base outline-none"
                 />
               </div>
-              <p className="mt-1 text-sm text-slate-500">Enter 10 digits only.</p>
+              {fieldErrors.contactNumber ? (
+                <p className="mt-1 text-sm text-red-600">{fieldErrors.contactNumber}</p>
+              ) : (
+                <p className="mt-1 text-sm text-slate-500">Enter 10 digits only.</p>
+              )}
             </div>
 
             <div>
@@ -218,8 +281,11 @@ export default function RegisterPage() {
                   type={showPassword ? "text" : "password"}
                   placeholder="Create a password"
                   value={password}
-                  onChange={(event) => setPassword(event.target.value)}
-                  className="w-full rounded-lg border border-slate-300 px-4 py-3 pr-12 text-base outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
+                  onChange={(event) => {
+                    setPassword(event.target.value);
+                    clearFieldError("password");
+                  }}
+                  className={`w-full rounded-lg border px-4 py-3 pr-12 text-base outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20 ${fieldErrors.password ? "border-red-500" : "border-slate-300"}`}
                 />
                 <button
                   type="button"
@@ -230,6 +296,45 @@ export default function RegisterPage() {
                   {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
                 </button>
               </div>
+              {password.length > 0 && (
+                <div className="mt-2">
+                  <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-200">
+                    <div
+                      className={`h-full rounded-full transition-all duration-300 ease-out ${
+                        passwordProgress === 100
+                          ? "bg-green-500"
+                          : passwordProgress >= 66
+                            ? "bg-amber-400"
+                            : passwordProgress >= 33
+                              ? "bg-orange-500"
+                              : "bg-red-500"
+                      }`}
+                      style={{ width: `${passwordProgress}%` }}
+                    />
+                  </div>
+                  <p className="mt-1.5 text-xs text-slate-600">
+                    Password must be at least 8 characters long and include:
+                  </p>
+                  <ul className="mt-1 space-y-0.5 text-xs">
+                    <li className={passwordRequirements.capital ? "text-green-600 line-through" : "text-slate-500"}>
+                      • 1 uppercase letter
+                    </li>
+                    <li className={passwordRequirements.number ? "text-green-600 line-through" : "text-slate-500"}>
+                      • 1 number
+                    </li>
+                    <li className={passwordRequirements.special ? "text-green-600 line-through" : "text-slate-500"}>
+                      • 1 special character
+                    </li>
+                  </ul>
+                </div>
+              )}
+              {fieldErrors.password ? (
+                <p className="mt-1 text-sm text-red-600">{fieldErrors.password}</p>
+              ) : password.length === 0 ? (
+                <p className="mt-1 text-sm text-slate-500">
+                  
+                </p>
+              ) : null}
             </div>
 
             <div>
@@ -245,8 +350,11 @@ export default function RegisterPage() {
                   type={showConfirmPassword ? "text" : "password"}
                   placeholder="Confirm password"
                   value={confirmPassword}
-                  onChange={(event) => setConfirmPassword(event.target.value)}
-                  className="w-full rounded-lg border border-slate-300 px-4 py-3 pr-12 text-base outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
+                  onChange={(event) => {
+                    setConfirmPassword(event.target.value);
+                    clearFieldError("confirmPassword");
+                  }}
+                  className={`w-full rounded-lg border px-4 py-3 pr-12 text-base outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20 ${fieldErrors.confirmPassword ? "border-red-500" : "border-slate-300"}`}
                 />
                 <button
                   type="button"
@@ -257,6 +365,9 @@ export default function RegisterPage() {
                   {showConfirmPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
                 </button>
               </div>
+              {fieldErrors.confirmPassword && (
+                <p className="mt-1 text-sm text-red-600">{fieldErrors.confirmPassword}</p>
+              )}
             </div>
 
             <button

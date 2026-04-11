@@ -14,6 +14,7 @@ import {
   Zap,
   Clock,
   ShieldCheck,
+  ClipboardList,
 } from "lucide-react";
 import type { Booking, Payment } from "@/types/client";
 import { useSessionUser } from "@/lib/client-session";
@@ -23,6 +24,7 @@ export default function ClientHomePage() {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
   const [warrantyProjectCount, setWarrantyProjectCount] = useState(0);
+  const [projectCount, setProjectCount] = useState(0);
 
   useEffect(() => {
     const load = async () => {
@@ -41,6 +43,7 @@ export default function ClientHomePage() {
         if (projectsResponse.ok) {
           const projects = (await projectsResponse.json()) as unknown[];
           setWarrantyProjectCount(projects.length);
+          setProjectCount(projects.length);
         }
       } catch {
         setBookings([]);
@@ -88,6 +91,16 @@ export default function ClientHomePage() {
         iconBg: "bg-brand/10",
         iconColor: "text-brand",
         stat: `${bookings.filter(isUpcoming).length} upcoming`,
+      },
+      {
+        label: "My Projects",
+        description: "Track your solar installation projects and detailed timeline",
+        href: "/client/projects",
+        icon: ClipboardList,
+        color: "bg-indigo-600",
+        iconBg: "bg-indigo-50",
+        iconColor: "text-indigo-600",
+        stat: `${projectCount} project${projectCount !== 1 ? "s" : ""}`,
       },
       {
         label: "Calendar",
@@ -140,7 +153,7 @@ export default function ClientHomePage() {
         stat: `${warrantyProjectCount} project${warrantyProjectCount !== 1 ? "s" : ""} under warranty`,
       },
     ],
-    [bookings, payments, warrantyProjectCount, isUpcoming]
+    [bookings, payments, warrantyProjectCount, projectCount, isUpcoming]
   );
 
   const nextBooking = bookings.find(

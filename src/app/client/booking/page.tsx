@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import {
   Search,
   Calendar,
@@ -10,14 +10,30 @@ import {
   Eye,
   Pencil,
   X,
+  ClipboardList,
+  CheckCircle2,
+  Circle,
+  Clock,
+  XCircle,
+  ChevronDown,
+  ChevronUp,
+  Users,
 } from "lucide-react";
 import Button from "@/components/ui/Button";
 import Modal from "@/components/ui/Modal";
+import StatusBadge from "@/components/ui/StatusBadge";
+import ProgressBar from "@/components/ui/ProgressBar";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { getTodayInManila, isPastDateTime } from "@/lib/date-utils";
 import { toast } from "@/lib/toast";
-import { SERVICE_LABELS, BOOKING_STATUS_LABELS, SERVICE_ICONS } from "@/lib/constants";
-import type { BookingStatus, ServiceType } from "@/types/client";
+import {
+  SERVICE_LABELS,
+  BOOKING_STATUS_LABELS,
+  SERVICE_ICONS,
+  PROJECT_STATUS_LABELS,
+  TASK_STATUS_LABELS,
+} from "@/lib/constants";
+import type { BookingStatus, ServiceType, ClientProjectDetail, ClientTask } from "@/types/client";
 import type { Booking } from "@/types/client";
 
 const statusStyles: Record<BookingStatus, { bg: string; text: string; dot: string }> = {
@@ -30,6 +46,13 @@ const statusStyles: Record<BookingStatus, { bg: string; text: string; dot: strin
 
 type SortField = "date" | "referenceNo" | "amount" | "status";
 type SortOrder = "asc" | "desc";
+
+const taskStatusIcons: Record<ClientTask["status"], React.ReactNode> = {
+  completed: <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />,
+  in_progress: <Clock className="h-3.5 w-3.5 text-blue-500" />,
+  todo: <Circle className="h-3.5 w-3.5 text-slate-400" />,
+  cancelled: <XCircle className="h-3.5 w-3.5 text-red-400" />,
+};
 
 export default function BookingPage() {
   const [bookings, setBookings] = useState<Booking[]>([]);
@@ -62,6 +85,10 @@ export default function BookingPage() {
   const [sortField, setSortField] = useState<SortField>("date");
   const [sortOrder, setSortOrder] = useState<SortOrder>("desc");
   const [selectedBooking, setSelectedBooking] = useState<string | null>(null);
+  const [projectDetail, setProjectDetail] = useState<ClientProjectDetail | null>(null);
+  const [projectLoading, setProjectLoading] = useState(false);
+  const [showAllTasks, setShowAllTasks] = useState(false);
+  const [descExpanded, setDescExpanded] = useState(false);
 
   const [editBooking, setEditBooking] = useState<Booking | null>(null);
   const [editMode, setEditMode] = useState<"menu" | "reschedule">("menu");
@@ -71,6 +98,39 @@ export default function BookingPage() {
   const [rescheduleReasonOther, setRescheduleReasonOther] = useState("");
   const [showRescheduleConfirm, setShowRescheduleConfirm] = useState(false);
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
+
+  // Fetch linked project detail when a booking is selected
+  const fetchProjectDetail = useCallback(async (projectId: string) => {
+    setProjectLoading(true);
+    setProjectDetail(null);
+    try {
+      const res = await fetch(`/api/client/projects/${projectId}`, { cache: "no-store" });
+      if (res.ok) {
+        setProjectDetail((await res.json()) as ClientProjectDetail);
+      }
+    } catch {
+      setProjectDetail(null);
+    } finally {
+      setProjectLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!selectedBooking) {
+      setProjectDetail(null);
+      setProjectLoading(false);
+      setShowAllTasks(false);
+      setDescExpanded(false);
+      return;
+    }
+    const bk = bookings.find((b) => b.id === selectedBooking);
+    if (bk?.projectId) {
+      void fetchProjectDetail(bk.projectId);
+    } else {
+      setProjectDetail(null);
+      setProjectLoading(false);
+    }
+  }, [selectedBooking, bookings, fetchProjectDetail]);
 
   const filtered = useMemo(() => {
     const items = bookings.filter((b) => {
@@ -524,6 +584,138 @@ export default function BookingPage() {
                     <span className="text-lg font-bold text-brand">
                       {formatCurrency(detail.amount)}
                     </span>
+                  </div>
+                )}
+
+                {/* Project Progress Section */}
+                {projectLoading && (
+                  <div className="rounded-xl border border-slate-200 p-4 space-y-3 animate-pulse">
+                    <div className="h-4 bg-slate-100 rounded w-1/3" />
+                    <div className="h-2.5 bg-slate-100 rounded w-full" />
+                    <div className="h-3 bg-slate-100 rounded w-2/3" />
+                    <div className="h-3 bg-slate-100 rounded w-1/2" />
+                  </div>
+                )}
+                {projectDetail && !projectLoading && (
+                  <div className="rounded-xl border border-slate-200 overflow-hidden">
+                    {/* Project Header */}
+                    <div className="bg-slate-50 px-4 py-3 border-b border-slate-100">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <ClipboardList className="h-4 w-4 text-brand" />
+                          <h4 className="text-sm font-semibold text-slate-900">Project Progress</h4>
+                        </div>
+                        <StatusBadge status={projectDetail.status} size="sm" />
+                      </div>
+                      <p className="text-xs text-slate-600 mt-1 font-medium">{projectDetail.name}</p>
+                    </div>
+
+                    <div className="p-4 space-y-4">
+                      {/* Progress Bar */}
+                      <div>
+                        <div className="flex items-center justify-between mb-1.5">
+                          <span className="text-xs text-slate-500">Overall Progress</span>
+                          <span className="text-xs font-semibold text-slate-700">{projectDetail.progress}%</span>
+                        </div>
+                        <ProgressBar value={projectDetail.progress} size="md" />
+                      </div>
+
+                      {/* Schedule & Location */}
+                      <div className="grid grid-cols-2 gap-2.5">
+                        <div className="rounded-lg bg-slate-50 p-2.5">
+                          <p className="text-[10px] uppercase tracking-wider text-slate-400 font-medium">Start</p>
+                          <p className="text-xs font-medium text-slate-700 mt-0.5">{formatDate(projectDetail.startDate)}</p>
+                        </div>
+                        <div className="rounded-lg bg-slate-50 p-2.5">
+                          <p className="text-[10px] uppercase tracking-wider text-slate-400 font-medium">End</p>
+                          <p className="text-xs font-medium text-slate-700 mt-0.5">{formatDate(projectDetail.endDate)}</p>
+                        </div>
+                      </div>
+
+                      {/* Project Lead & Team */}
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2">
+                          <User className="h-3.5 w-3.5 text-slate-400" />
+                          <span className="text-xs text-slate-500">Lead:</span>
+                          <span className="text-xs font-medium text-slate-700">{projectDetail.projectLeadName}</span>
+                        </div>
+                        {projectDetail.assignedTechnicianNames.length > 0 && (
+                          <div className="flex items-start gap-2">
+                            <Users className="h-3.5 w-3.5 text-slate-400 mt-0.5" />
+                            <span className="text-xs text-slate-500">Team:</span>
+                            <div className="flex flex-wrap gap-1">
+                              {projectDetail.assignedTechnicianNames.map((name) => (
+                                <span
+                                  key={name}
+                                  className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-600"
+                                >
+                                  {name}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Description */}
+                      {projectDetail.description && (
+                        <div>
+                          <p className="text-xs font-medium text-slate-500 mb-1">Description</p>
+                          <p className={`text-xs text-slate-600 leading-relaxed ${!descExpanded ? "line-clamp-3" : ""}`}>
+                            {projectDetail.description}
+                          </p>
+                          {projectDetail.description.length > 150 && (
+                            <button
+                              onClick={() => setDescExpanded(!descExpanded)}
+                              className="text-[10px] font-medium text-brand hover:text-brand/80 mt-1 flex items-center gap-0.5"
+                            >
+                              {descExpanded ? "Show less" : "Show more"}
+                              {descExpanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                            </button>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Task List */}
+                      {projectDetail.tasks.length > 0 && (
+                        <div>
+                          <div className="flex items-center justify-between mb-2">
+                            <p className="text-xs font-medium text-slate-500">
+                              Tasks ({projectDetail.tasks.filter((t) => t.status === "completed").length}/{projectDetail.tasks.length} completed)
+                            </p>
+                          </div>
+                          <div className="space-y-1.5">
+                            {(showAllTasks ? projectDetail.tasks : projectDetail.tasks.slice(0, 4)).map((task) => (
+                              <div
+                                key={task.id}
+                                className="flex items-center gap-2.5 rounded-lg border border-slate-100 px-3 py-2 hover:bg-slate-50/50 transition-colors"
+                              >
+                                <span className="flex-shrink-0">{taskStatusIcons[task.status]}</span>
+                                <div className="min-w-0 flex-1">
+                                  <p className="text-xs font-medium text-slate-800 truncate">{task.title}</p>
+                                  <div className="flex items-center gap-2 mt-0.5">
+                                    <span className="text-[10px] text-slate-400">{formatDate(task.dueDate)}</span>
+                                    {task.assignedToName !== "Unassigned" && (
+                                      <span className="text-[10px] text-slate-400">· {task.assignedToName}</span>
+                                    )}
+                                  </div>
+                                </div>
+                                <StatusBadge status={task.priority} size="sm" />
+                              </div>
+                            ))}
+                          </div>
+                          {projectDetail.tasks.length > 4 && (
+                            <button
+                              onClick={() => setShowAllTasks(!showAllTasks)}
+                              className="mt-2 w-full text-center text-[10px] font-medium text-brand hover:text-brand/80 flex items-center justify-center gap-0.5"
+                            >
+                              {showAllTasks ? "Show less" : `Show all ${projectDetail.tasks.length} tasks`}
+                              {showAllTasks ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 )}
               </div>

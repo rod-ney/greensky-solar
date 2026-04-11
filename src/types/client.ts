@@ -27,6 +27,7 @@ export interface Booking {
   lat?: number;
   lng?: number;
   addressId?: string;
+  projectId?: string;
 }
 
 export interface TimeSlot {
@@ -74,6 +75,37 @@ export interface Payment {
   dueDate?: string;
   serviceType?: string;
   paymentInstructions?: string;
+}
+
+// ===== Client Project Detail Types =====
+
+export type ClientTaskStatus = "todo" | "in_progress" | "completed" | "cancelled";
+export type ClientTaskPriority = "low" | "medium" | "high" | "urgent";
+export type ClientProjectStatus = "ongoing" | "completed" | "pending" | "cancelled";
+
+export interface ClientTask {
+  id: string;
+  title: string;
+  status: ClientTaskStatus;
+  priority: ClientTaskPriority;
+  dueDate: string;
+  createdAt: string;
+  assignedToName: string;
+}
+
+export interface ClientProjectDetail {
+  id: string;
+  name: string;
+  location: string;
+  status: ClientProjectStatus;
+  priority: ClientTaskPriority;
+  startDate: string;
+  endDate: string;
+  progress: number;
+  description: string;
+  projectLeadName: string;
+  assignedTechnicianNames: string[];
+  tasks: ClientTask[];
 }
 
 export type DocumentApprovalStatus = "pending" | "approved" | "rejected";

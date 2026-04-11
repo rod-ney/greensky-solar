@@ -11,6 +11,7 @@ type BookingRow = {
   status: Booking["status"];
   technician: string;
   project_lead_name?: string | null;
+  project_id?: string | null;
   address: string;
   notes: string;
   amount: string | number;
@@ -40,6 +41,7 @@ function mapBooking(row: BookingRow): Booking {
     amount: Number(row.amount),
     lat,
     lng,
+    projectId: row.project_id ?? undefined,
   };
 }
 
@@ -52,7 +54,11 @@ export async function listClientBookingsFromDb(userId?: string | null): Promise<
               JOIN technicians t ON p.project_lead = t.id
               WHERE p.booking_id = b.id AND p.project_lead IS NOT NULL
               ORDER BY p.created_at DESC
-              LIMIT 1) AS project_lead_name
+              LIMIT 1) AS project_lead_name,
+             (SELECT p.id FROM projects p
+              WHERE p.booking_id = b.id
+              ORDER BY p.created_at DESC
+              LIMIT 1) AS project_id
       FROM bookings b
       LEFT JOIN saved_addresses sa ON b.address_id = sa.id
       LEFT JOIN projects p ON p.booking_id = b.id
@@ -66,7 +72,11 @@ export async function listClientBookingsFromDb(userId?: string | null): Promise<
               JOIN technicians t ON p.project_lead = t.id
               WHERE p.booking_id = b.id AND p.project_lead IS NOT NULL
               ORDER BY p.created_at DESC
-              LIMIT 1) AS project_lead_name
+              LIMIT 1) AS project_lead_name,
+             (SELECT p.id FROM projects p
+              WHERE p.booking_id = b.id
+              ORDER BY p.created_at DESC
+              LIMIT 1) AS project_id
       FROM bookings b
       LEFT JOIN saved_addresses sa ON b.address_id = sa.id
       ORDER BY b.date DESC, b.time DESC

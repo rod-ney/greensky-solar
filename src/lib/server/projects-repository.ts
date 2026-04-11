@@ -185,7 +185,10 @@ export type ClientProjectSummary = {
   name: string;
   location: string;
   status: Project["status"];
+  priority: Project["priority"];
+  startDate: string;
   endDate: string;
+  progress: number;
   warrantyStartDate?: string;
   warrantyEndDate?: string;
 };
@@ -193,7 +196,7 @@ export type ClientProjectSummary = {
 export async function listClientProjectsFromDb(userId: string): Promise<ClientProjectSummary[]> {
   const projectResult = await dbQuery<ProjectRow>(
     `
-      SELECT id, name, location, status, end_date, warranty_start_date, warranty_end_date
+      SELECT id, name, location, status, priority, start_date, end_date, progress, warranty_start_date, warranty_end_date
       FROM projects
       WHERE user_id = $1
       ORDER BY end_date DESC
@@ -205,7 +208,10 @@ export async function listClientProjectsFromDb(userId: string): Promise<ClientPr
     name: row.name,
     location: row.location,
     status: row.status,
+    priority: row.priority,
+    startDate: toIsoDateManila(row.start_date),
     endDate: toIsoDateManila(row.end_date),
+    progress: row.progress,
     warrantyStartDate: row.warranty_start_date ? toIsoDateManila(row.warranty_start_date) : undefined,
     warrantyEndDate: row.warranty_end_date ? toIsoDateManila(row.warranty_end_date) : undefined,
   }));
@@ -528,4 +534,96 @@ export async function deleteProjectInDb(projectId: string): Promise<boolean> {
     [projectId]
   );
   return (result.rowCount ?? 0) > 0;
+}
+
+// ===== Client-Facing Project Detail =====
+
+import type { ClientProjectDetail, ClientTask } from "@/types/client";
+
+type ClientTaskRow = {
+  id: string;
+  title: string;
+  status: ClientTask["status"];
+  priority: ClientTask["priority"];
+  due_date: string | Date;
+  created_at: string | Date;
+  assigned_to_name: string | null;
+};
+
+/**
+ * Fetch a single project for a client user with moderate detail:
+ * project info, progress, schedule, description, technician names, and tasks.
+ * Returns null if the project doesn't exist or doesn't belong to the given user.
+ */
+export async function getClientProjectDetailFromDb(
+  projectId: string,
+  userId: string
+): Promise<ClientProjectDetail | null> {
+  const projectResult = await dbQuery<
+    ProjectRow & { project_lead_name: string | null }
+  >(
+    `
+      SELECT p.id, p.name, p.client, p.location, p.status, p.priority,
+             p.start_date, p.end_date, p.budget, p.progress, p.description,
+             p.project_lead, p.user_id, p.warranty_start_date, p.warranty_end_date,
+             t.name AS project_lead_name
+      FROM projects p
+      LEFT JOIN technicians t ON p.project_lead = t.id
+      WHERE p.id = $1 AND p.user_id = $2
+      LIMIT 1
+    `,
+    [projectId, userId]
+  );
+  const row = projectResult.rows[0];
+  if (!row) return null;
+
+  // Fetch tasks with assigned technician names resolved
+  const taskResult = await dbQuery<ClientTaskRow>(
+    `
+      SELECT tk.id, tk.title, tk.status, tk.priority, tk.due_date, tk.created_at,
+             tn.name AS assigned_to_name
+      FROM tasks tk
+      LEFT JOIN technicians tn ON tk.assigned_to = tn.id
+      WHERE tk.project_id = $1
+      ORDER BY tk.due_date ASC
+    `,
+    [projectId]
+  );
+
+  // Fetch assigned technician names
+  const techResult = await dbQuery<{ name: string }>(
+    `
+      SELECT tn.name
+      FROM project_technicians pt
+      JOIN technicians tn ON pt.technician_id = tn.id
+      WHERE pt.project_id = $1
+      ORDER BY tn.name ASC
+    `,
+    [projectId]
+  );
+
+  const tasks: ClientTask[] = taskResult.rows.map((t) => ({
+    id: t.id,
+    title: t.title,
+    status: t.status,
+    priority: t.priority,
+    dueDate: toIsoDateManila(t.due_date),
+    createdAt: toIsoDateManila(t.created_at),
+    assignedToName: t.assigned_to_name ?? "Unassigned",
+  }));
+
+  return {
+    id: row.id,
+    name: row.name,
+    location: row.location,
+    status: row.status,
+    priority: row.priority,
+    startDate: toIsoDateManila(row.start_date),
+    endDate: toIsoDateManila(row.end_date),
+    progress: row.progress,
+    description: row.description,
+    projectLeadName: row.project_lead_name ?? "Unassigned",
+    assignedTechnicianNames: techResult.rows.map((r) => r.name),
+    tasks,
+  };
 }

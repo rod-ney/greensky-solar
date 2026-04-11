@@ -34,6 +34,22 @@ export const SERVICE_OPTIONS: { value: ServiceType; label: string }[] = (
   Object.entries(SERVICE_LABELS) as [ServiceType, string][]
 ).map(([value, label]) => ({ value, label }));
 
+/** Project status labels */
+export const PROJECT_STATUS_LABELS: Record<string, string> = {
+  ongoing: "Ongoing",
+  completed: "Completed",
+  pending: "Pending",
+  cancelled: "Cancelled",
+};
+
+/** Task status labels */
+export const TASK_STATUS_LABELS: Record<string, string> = {
+  todo: "To Do",
+  in_progress: "In Progress",
+  completed: "Completed",
+  cancelled: "Cancelled",
+};
+
 /** Service type CSS classes for badges/chips */
 export const SERVICE_ICONS: Record<ServiceType, string> = {
   site_inspection: "bg-purple-50 text-purple-600",

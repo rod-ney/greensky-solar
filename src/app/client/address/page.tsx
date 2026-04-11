@@ -75,6 +75,10 @@ const applianceOptions = [
   "Electric Stove",
 ];
 
+const LAST_KNOWN_GEO_PIN_KEY = "client:lastKnownGeoPin";
+const PH_ADDRESS_DATA_CACHE_KEY = "client:phAddressData";
+const PH_ADDRESS_DATA_VERSION = "v1"; // Increment to invalidate cache
+
 export default function AddressPage() {
   const [addresses, setAddresses] = useState<SavedAddress[]>([]);
   const [expandedId, setExpandedId] = useState<string | null>(addresses[0]?.id ?? null);
@@ -138,11 +142,50 @@ export default function AddressPage() {
   const [locateMessage, setLocateMessage] = useState("");
   const [focusPinKey, setFocusPinKey] = useState(0);
 
+  useEffect(() => {
+    if (!Number.isFinite(pinLat) || !Number.isFinite(pinLng)) return;
+    try {
+      localStorage.setItem(
+        LAST_KNOWN_GEO_PIN_KEY,
+        JSON.stringify({ lat: pinLat, lng: pinLng, updatedAt: Date.now() })
+      );
+    } catch {
+      // Ignore storage errors in private mode/restricted environments
+    }
+  }, [pinLat, pinLng]);
+
   // Load PH address hierarchy from Wilfredpine JSON (remote, cached by browser)
   useEffect(() => {
     async function loadPhData() {
       try {
         setIsLoadingPhData(true);
+
+        // Try loading from localStorage cache first
+        try {
+          const cached = localStorage.getItem(PH_ADDRESS_DATA_CACHE_KEY);
+          if (cached) {
+            const parsed = JSON.parse(cached);
+            if (
+              parsed.version === PH_ADDRESS_DATA_VERSION &&
+              parsed.regions &&
+              parsed.provinces &&
+              parsed.cities &&
+              parsed.barangays
+            ) {
+              setRegions(parsed.regions);
+              setProvinces(parsed.provinces);
+              setCities(parsed.cities);
+              setBarangays(parsed.barangays);
+              setPhDataError("");
+              setIsLoadingPhData(false);
+              return; // Use cached data, skip network fetch
+            }
+          }
+        } catch {
+          // Cache read failed, continue to network fetch
+        }
+
+        // Fetch from network
         const [regionRes, provinceRes, cityRes, barangayRes] = await Promise.all([
           fetch(
             "https://raw.githubusercontent.com/wilfredpine/philippine-address-selector/main/ph-json/region.json"
@@ -174,9 +217,47 @@ export default function AddressPage() {
         setCities(cityData);
         setBarangays(barangayData);
         setPhDataError("");
+
+        // Cache the successful fetch
+        try {
+          localStorage.setItem(
+            PH_ADDRESS_DATA_CACHE_KEY,
+            JSON.stringify({
+              version: PH_ADDRESS_DATA_VERSION,
+              regions: regionData,
+              provinces: provinceData,
+              cities: cityData,
+              barangays: barangayData,
+              cachedAt: Date.now(),
+            })
+          );
+        } catch {
+          // Storage quota exceeded or disabled, continue anyway
+        }
       } catch (error) {
-        console.error(error);
-        setPhDataError("Failed to load full PH address list. Please try again later.");
+        console.warn("PH address data fetch failed:", error);
+        
+        // Try one more time to load from cache as ultimate fallback
+        try {
+          const cached = localStorage.getItem(PH_ADDRESS_DATA_CACHE_KEY);
+          if (cached) {
+            const parsed = JSON.parse(cached);
+            if (parsed.regions && parsed.provinces && parsed.cities && parsed.barangays) {
+              setRegions(parsed.regions);
+              setProvinces(parsed.provinces);
+              setCities(parsed.cities);
+              setBarangays(parsed.barangays);
+              setPhDataError("Using offline address data (last updated: " + 
+                new Date(parsed.cachedAt || 0).toLocaleDateString() + ")");
+              setIsLoadingPhData(false);
+              return;
+            }
+          }
+        } catch {
+          // Cache fallback also failed
+        }
+
+        setPhDataError("Address data unavailable offline. Connect to internet to load locations.");
       } finally {
         setIsLoadingPhData(false);
       }
@@ -245,33 +326,129 @@ export default function AddressPage() {
   );
 
   const handleLocateMe = useCallback(() => {
+    const readStoredPin = (): { lat: number; lng: number } | null => {
+      try {
+        const raw = localStorage.getItem(LAST_KNOWN_GEO_PIN_KEY);
+        if (!raw) return null;
+        const parsed = JSON.parse(raw) as { lat?: number; lng?: number };
+        if (
+          typeof parsed.lat !== "number" ||
+          typeof parsed.lng !== "number" ||
+          !Number.isFinite(parsed.lat) ||
+          !Number.isFinite(parsed.lng)
+        ) {
+          return null;
+        }
+        return { lat: parsed.lat, lng: parsed.lng };
+      } catch {
+        return null;
+      }
+    };
+
+    const applyStoredPin = (message: string): boolean => {
+      const stored = readStoredPin();
+      if (!stored) return false;
+      setPinLat(Number(stored.lat.toFixed(6)));
+      setPinLng(Number(stored.lng.toFixed(6)));
+      setFocusPinKey((k) => k + 1);
+      setIsLocating(false);
+      setLocateMessage(message);
+      return true;
+    };
+
     if (!("geolocation" in navigator)) {
+      if (
+        applyStoredPin(
+          "Geolocation is not supported here. Pinned your last saved location instead."
+        )
+      ) {
+        return;
+      }
       setLocateMessage("Geolocation is not supported in this browser.");
       return;
     }
+
+    if (!window.isSecureContext) {
+      if (
+        applyStoredPin(
+          "Live location requires localhost/HTTPS. Pinned your last saved location instead."
+        )
+      ) {
+        return;
+      }
+      setLocateMessage("Location requires a secure origin. Use localhost or HTTPS.");
+      return;
+    }
+
+    const applyPosition = (pos: GeolocationPosition, fromCache: boolean) => {
+      const { latitude, longitude } = pos.coords;
+      setPinLat(Number(latitude.toFixed(6)));
+      setPinLng(Number(longitude.toFixed(6)));
+      try {
+        localStorage.setItem(
+          LAST_KNOWN_GEO_PIN_KEY,
+          JSON.stringify({ lat: latitude, lng: longitude, updatedAt: Date.now() })
+        );
+      } catch {
+        // Ignore storage errors
+      }
+      setFocusPinKey((k) => k + 1);
+      setIsLocating(false);
+      setLocateMessage(
+        fromCache
+          ? "Pinned your last known location (offline fallback)."
+          : "Location pinned from your device."
+      );
+    };
+
+    const handleFinalError = (err: GeolocationPositionError) => {
+      console.warn(`Geolocation failed: [${err.code}] ${err.message}`);
+
+      if (
+        applyStoredPin(
+          "Live location unavailable offline. Pinned your last saved location instead."
+        )
+      ) {
+        return;
+      }
+
+      setIsLocating(false);
+      if (err.code === err.PERMISSION_DENIED) {
+        setLocateMessage("Permission denied. Please allow location access in your browser.");
+      } else if (err.code === err.TIMEOUT) {
+        setLocateMessage("Location request timed out. Try again or manually pin your location on the map.");
+      } else {
+        setLocateMessage("Unable to get your location while offline. Manually pin your location on the map.");
+      }
+    };
+
     setIsLocating(true);
     setLocateMessage("");
+
     navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        const { latitude, longitude } = pos.coords;
-        setPinLat(Number(latitude.toFixed(6)));
-        setPinLng(Number(longitude.toFixed(6)));
-        setFocusPinKey((k) => k + 1);
-        setIsLocating(false);
-        setLocateMessage("Location pinned from your device.");
-      },
-      (err) => {
-        console.error(err);
-        setIsLocating(false);
-        if (err.code === err.PERMISSION_DENIED) {
-          setLocateMessage("Permission denied. Please allow location access in your browser.");
-        } else {
-          setLocateMessage("Unable to get your current location.");
+      (pos) => applyPosition(pos, false),
+      (firstErr) => {
+        console.warn(`High-accuracy geolocation failed: [${firstErr.code}] ${firstErr.message}`);
+
+        if (firstErr.code === firstErr.PERMISSION_DENIED) {
+          handleFinalError(firstErr);
+          return;
         }
+
+        navigator.geolocation.getCurrentPosition(
+          (pos) => applyPosition(pos, true),
+          (fallbackErr) => handleFinalError(fallbackErr),
+          {
+            enableHighAccuracy: false,
+            timeout: 8000,
+            maximumAge: 1000 * 60 * 60 * 24 * 7,
+          }
+        );
       },
       {
         enableHighAccuracy: true,
-        timeout: 10000,
+        timeout: 15000,
+        maximumAge: 0,
       }
     );
   }, []);

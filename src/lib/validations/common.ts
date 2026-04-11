@@ -10,10 +10,16 @@ export const emailSchema = z
   .email("Invalid email format")
   .transform((s) => s.trim().toLowerCase());
 
-/** Password: min 8 chars */
+/** Password: min 8 chars, must contain a number, special character, and capital letter */
 export const passwordSchema = z
   .string()
-  .min(8, "Password must be at least 8 characters");
+  .min(8, "Password must be at least 8 characters")
+  .regex(/[A-Z]/, "Password must contain at least one capital letter")
+  .regex(/\d/, "Password must contain at least one number")
+  .regex(
+    /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/,
+    "Password must contain at least one special character",
+  );
 
 /** Non-empty string, trimmed */
 export const nonEmptyString = z

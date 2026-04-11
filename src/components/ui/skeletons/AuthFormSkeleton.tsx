@@ -35,10 +35,18 @@ function FormFieldsSkeleton({ variant }: { variant: Variant }) {
         <div>
           <Skeleton className="mb-1.5 h-4 w-28" />
           <Skeleton className="h-12 w-full rounded-lg" />
+          <Skeleton className="mt-1 h-4 w-32" />
         </div>
         <div>
           <Skeleton className="mb-1.5 h-4 w-20" />
           <Skeleton className="h-12 w-full rounded-lg" />
+          <Skeleton className="mt-2 h-1.5 w-full rounded-full" />
+          <Skeleton className="mt-1.5 h-3 w-72 max-w-full" />
+          <div className="mt-1 space-y-1">
+            <Skeleton className="h-3 w-28" />
+            <Skeleton className="h-3 w-24" />
+            <Skeleton className="h-3 w-32" />
+          </div>
         </div>
         <div>
           <Skeleton className="mb-1.5 h-4 w-28" />

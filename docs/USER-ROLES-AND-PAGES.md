@@ -55,6 +55,22 @@ Public pricing and service packages page showcasing all available solar services
 
 ---
 
+### 5. Chatbot (Sunny – Online Assistant)
+**Availability:** Landing Page (`/`), Pricing Page (`/prices`)
+
+A floating chat widget that provides instant answers to common visitor questions. The chatbot appears as a circular button fixed at the bottom-right of the screen and expands into a chat window when clicked.
+
+**Features:**
+- **Quick replies** – One-tap options for: Pricing & packages, Book a site inspection, Solar installation process, Warranty & support
+- **Keyword-based responses** – Recognizes common topics (pricing, cost, booking, inspection, installation, warranty, support, solar) and returns tailored answers with package details, process steps, or links to relevant pages
+- **Default fallback** – For unmatched questions, suggests calling or booking a free site inspection and offers help finding the booking page
+- **Conversation history** – Keeps the current session’s messages visible in the chat window
+- **Accessible** – Keyboard support (Enter to send) and ARIA labels for screen readers
+
+**Create/Add Buttons:** None (interactive support widget only)
+
+---
+
 ## Admin Role
 
 Administrators manage the entire system, including users, projects, inventory, and business operations. Admins have full access to all features and data across the application.
