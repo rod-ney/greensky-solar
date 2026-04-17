@@ -40,9 +40,14 @@ export default function TechnicianLayout({
   };
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="relative min-h-screen overflow-hidden bg-gradient-to-br from-slate-50 via-emerald-50/40 to-blue-50/50">
+      <div className="pointer-events-none absolute inset-0">
+        <div className="absolute -top-24 -left-20 h-72 w-72 rounded-full bg-emerald-200/25 blur-3xl" />
+        <div className="absolute top-20 right-0 h-80 w-80 rounded-full bg-blue-200/20 blur-3xl" />
+        <div className="absolute bottom-0 left-1/3 h-64 w-64 rounded-full bg-brand/10 blur-3xl" />
+      </div>
       {/* Top Navbar */}
-      <header className="sticky top-0 z-30 border-b border-slate-200 bg-white">
+      <header className="sticky top-0 z-30 border-b border-slate-200/70 bg-white/85 backdrop-blur-md">
         <div className="flex h-14 w-full items-center justify-between px-4 sm:px-6">
           {/* Left */}
           <div className="flex items-center gap-3">
@@ -120,7 +125,7 @@ export default function TechnicianLayout({
       </header>
 
       {/* Content */}
-      <main className="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-8">
+      <main className="relative z-10 mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-8">
         {children}
       </main>
     </div>

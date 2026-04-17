@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   CheckCircle2,
   MapPin,
@@ -9,6 +10,7 @@ import {
   Clock,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   ClipboardCheck,
 } from "lucide-react";
 import Button from "@/components/ui/Button";
@@ -33,6 +35,7 @@ const steps = [
 ];
 
 export default function BookNowPage() {
+  const router = useRouter();
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [savedAddresses, setSavedAddresses] = useState<SavedAddress[]>([]);
   const [timeSlots, setTimeSlots] = useState<TimeSlot[]>([]);
@@ -45,7 +48,8 @@ export default function BookNowPage() {
   const [selectedAddressId, setSelectedAddressId] = useState(savedAddresses[0]?.id ?? "");
   const [selectedDate, setSelectedDate] = useState("");
   const [selectedTime, setSelectedTime] = useState("");
-  const [serviceType, setServiceType] = useState<ServiceType>("site_inspection");
+  const [selectedServices, setSelectedServices] = useState<ServiceType[]>(["site_inspection"]);
+  const [showServicesDropdown, setShowServicesDropdown] = useState(false);
   const [notes, setNotes] = useState("");
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
@@ -82,7 +86,24 @@ export default function BookNowPage() {
   }, []);
 
   const selectedAddress = savedAddresses.find((a) => a.id === selectedAddressId);
-  const selectedService = SERVICE_OPTIONS.find((s) => s.value === serviceType)?.label ?? "";
+  const selectedServiceLabels = selectedServices
+    .map((service) => SERVICE_OPTIONS.find((s) => s.value === service)?.label)
+    .filter(Boolean)
+    .join(", ");
+  const toggleService = useCallback((service: ServiceType) => {
+    setSelectedServices((prev) => {
+      // Site inspection is exclusive and cannot be combined with other services.
+      if (service === "site_inspection") {
+        return prev.includes("site_inspection") ? [] : ["site_inspection"];
+      }
+      const withoutSiteInspection = prev.filter((s) => s !== "site_inspection");
+      if (withoutSiteInspection.includes(service)) {
+        return withoutSiteInspection.filter((s) => s !== service);
+      }
+      return [...withoutSiteInspection, service];
+    });
+  }, []);
+
 
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const firstDay = new Date(year, month, 1).getDay();
@@ -132,7 +153,7 @@ export default function BookNowPage() {
   const canContinue =
     (currentStep === 1 && Boolean(selectedAddressId)) ||
     (currentStep === 2 && Boolean(selectedDate)) ||
-    (currentStep === 3 && Boolean(selectedDate && selectedTime && serviceType)) ||
+    (currentStep === 3 && Boolean(selectedDate && selectedTime && selectedServices.length > 0)) ||
     currentStep === 4;
 
   const goNext = () => setCurrentStep((prev) => Math.min(4, prev + 1));
@@ -154,41 +175,44 @@ export default function BookNowPage() {
   const submitBooking = async () => {
     if (!selectedAddress || !selectedDate || !selectedTime) return;
     try {
-      const headers: Record<string, string> = { "Content-Type": "application/json" };
-      if (idempotencyKeyRef.current) {
-        headers["Idempotency-Key"] = idempotencyKeyRef.current;
+      const createdBookings: Booking[] = [];
+      for (const [index, serviceType] of selectedServices.entries()) {
+        const headers: Record<string, string> = { "Content-Type": "application/json" };
+        if (idempotencyKeyRef.current) {
+          headers["Idempotency-Key"] = `${idempotencyKeyRef.current}-${index}`;
+        }
+        const response = await fetch("/api/client/bookings", {
+          method: "POST",
+          headers,
+          body: JSON.stringify({
+            serviceType,
+            date: selectedDate,
+            time: selectedTime,
+            address: selectedAddress.fullAddress,
+            notes: notes.trim(),
+            status: "pending",
+            technician: "Unassigned",
+            amount: 0,
+            lat: selectedAddress.lat,
+            lng: selectedAddress.lng,
+            addressId: selectedAddress.id,
+          }),
+        });
+        const payload = (await response.json()) as Booking | { error?: string };
+        if (!response.ok) {
+          toast.error(
+            "error" in payload && payload.error
+              ? payload.error
+              : "Failed to create booking."
+          );
+          return;
+        }
+        createdBookings.push(payload as Booking);
       }
-      const response = await fetch("/api/client/bookings", {
-        method: "POST",
-        headers,
-        body: JSON.stringify({
-          serviceType,
-          date: selectedDate,
-          time: selectedTime,
-          address: selectedAddress.fullAddress,
-          notes: notes.trim(),
-          status: "pending",
-          technician: "Unassigned",
-          amount: 0,
-          lat: selectedAddress.lat,
-          lng: selectedAddress.lng,
-          addressId: selectedAddress.id,
-        }),
-      });
-      const payload = (await response.json()) as Booking | { error?: string };
-      if (!response.ok) {
-        toast.error(
-          "error" in payload && payload.error
-            ? payload.error
-            : "Failed to create booking."
-        );
-        return;
-      }
-      setBookings((prev) => [payload as Booking, ...prev]);
-      setIsSubmitted(true);
       setShowConfirmModal(false);
-      setCurrentStep(4);
+      setIsSubmitted(true);
       toast.success("Booking confirmed! Our team will confirm your schedule shortly.");
+      router.push("/client/booking");
     } catch {
       toast.error("Failed to create booking.");
     }
@@ -387,18 +411,75 @@ export default function BookNowPage() {
                 />
               </div>
               <div>
-                <label className="mb-1 block text-xs font-medium text-slate-600">Service Type</label>
-                <select
-                  value={serviceType}
-                  onChange={(e) => setServiceType(e.target.value as ServiceType)}
-                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand"
-                >
-                  {SERVICE_OPTIONS.map((service) => (
-                    <option key={service.value} value={service.value}>
-                      {service.label}
-                    </option>
-                  ))}
-                </select>
+                <label className="mb-1 block text-xs font-medium text-slate-600">
+                  Services
+                </label>
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setShowServicesDropdown((prev) => !prev)}
+                    className="flex min-h-[42px] w-full items-center justify-between rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none transition-colors hover:border-slate-300 focus:border-brand focus:ring-1 focus:ring-brand"
+                  >
+                    {selectedServices.length > 0 ? (
+                      <span className="flex flex-wrap gap-1.5 pr-3">
+                        {selectedServices.map((service) => {
+                          const label =
+                            SERVICE_OPTIONS.find((opt) => opt.value === service)?.label ?? service;
+                          return (
+                            <span
+                              key={service}
+                              className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800"
+                            >
+                              {label}
+                            </span>
+                          );
+                        })}
+                      </span>
+                    ) : (
+                      <span className="text-slate-400">Select services</span>
+                    )}
+                    <ChevronDown
+                      className={`h-4 w-4 shrink-0 text-slate-400 transition-transform ${
+                        showServicesDropdown ? "rotate-180" : ""
+                      }`}
+                    />
+                  </button>
+                  {showServicesDropdown && (
+                    <div className="absolute z-20 mt-1 w-full rounded-lg border border-slate-200 bg-white p-2 shadow-lg">
+                      <div className="grid grid-cols-1 gap-2">
+                        {SERVICE_OPTIONS.map((service) => {
+                          const checked = selectedServices.includes(service.value as ServiceType);
+                          return (
+                            <button
+                              key={service.value}
+                              type="button"
+                              onClick={() => toggleService(service.value as ServiceType)}
+                              className={`flex items-center justify-between rounded-lg border px-3 py-2 text-left text-sm transition-colors ${
+                                checked
+                                  ? "border-brand bg-brand-50 text-brand"
+                                  : "border-slate-200 bg-white text-slate-700 hover:border-slate-300"
+                              }`}
+                            >
+                              <span className="font-medium">{service.label}</span>
+                              <span
+                                className={`inline-flex h-4 w-4 items-center justify-center rounded border text-[10px] font-bold ${
+                                  checked
+                                    ? "border-brand bg-brand text-white"
+                                    : "border-slate-300 text-transparent"
+                                }`}
+                              >
+                                ✓
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+                <p className="mt-1 text-[11px] text-slate-500">
+                  You can select multiple services. Site Inspection is exclusive.
+                </p>
               </div>
             </div>
 
@@ -454,8 +535,10 @@ export default function BookNowPage() {
                 </p>
               </div>
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                <p className="text-[11px] text-slate-500">Service Type</p>
-                <p className="mt-1 text-sm font-medium text-slate-900">{selectedService || "—"}</p>
+                <p className="text-[11px] text-slate-500">Services</p>
+                <p className="mt-1 text-sm font-medium text-slate-900">
+                  {selectedServiceLabels || "—"}
+                </p>
               </div>
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
                 <p className="text-[11px] text-slate-500">Notes</p>

@@ -23,7 +23,7 @@ import Button from "@/components/ui/Button";
 import Modal from "@/components/ui/Modal";
 import StatusBadge from "@/components/ui/StatusBadge";
 import ProgressBar from "@/components/ui/ProgressBar";
-import { formatCurrency, formatDate } from "@/lib/format";
+import { formatBookingSchedule, formatCurrency, formatDate } from "@/lib/format";
 import { getTodayInManila, isPastDateTime } from "@/lib/date-utils";
 import { toast } from "@/lib/toast";
 import {
@@ -229,6 +229,11 @@ export default function BookingPage() {
 
   const handleCancelConfirm = () => {
     if (!editBooking) return;
+    if (editBooking.status === "completed" || editBooking.status === "in_progress") {
+      toast.error("This booking can no longer be cancelled.");
+      setShowCancelConfirm(false);
+      return;
+    }
     const run = async () => {
       try {
         const response = await fetch(`/api/client/bookings/${editBooking.id}`, {
@@ -367,9 +372,12 @@ export default function BookingPage() {
                 <th className="px-5 py-3.5 text-left">
                   <button
                     onClick={() => toggleSort("date")}
-                    className="flex items-center gap-1 text-xs font-medium text-slate-500 hover:text-slate-700"
+                    className="flex flex-col items-start gap-0.5 text-left"
                   >
-                    Date & Time <ArrowUpDown className="h-3 w-3" />
+                    <span className="flex items-center gap-1 text-xs font-medium text-slate-500 hover:text-slate-700">
+                      Start – end <ArrowUpDown className="h-3 w-3" />
+                    </span>
+                    <span className="text-[10px] font-normal text-slate-400">Time</span>
                   </button>
                 </th>
                 <th className="px-5 py-3.5 text-left text-xs font-medium text-slate-500">
@@ -404,11 +412,11 @@ export default function BookingPage() {
                   </td>
                 </tr>
               ) : (
-                filtered.map((bk) => {
+                filtered.map((bk, index) => {
                   const sSt = statusStyles[bk.status];
                   return (
                     <tr
-                      key={bk.id}
+                      key={`${bk.id}-${bk.referenceNo}-${index}`}
                       className="hover:bg-slate-50/60 transition-colors cursor-pointer"
                       onClick={() => setSelectedBooking(bk.id)}
                     >
@@ -426,7 +434,7 @@ export default function BookingPage() {
                       </td>
                       <td className="px-5 py-4">
                         <div className="text-sm text-slate-900">
-                          {formatDate(bk.date)}
+                          {formatBookingSchedule(bk.date, bk.endDate)}
                         </div>
                         <div className="text-xs text-slate-500 mt-0.5">{bk.time}</div>
                       </td>
@@ -539,9 +547,10 @@ export default function BookingPage() {
                   <div className="flex items-start gap-3 rounded-xl border border-slate-100 p-3.5">
                     <Calendar className="h-4 w-4 text-slate-400 mt-0.5" />
                     <div>
-                      <p className="text-xs text-slate-500">Date & Time</p>
+                      <p className="text-xs text-slate-500">Start – end · time</p>
                       <p className="text-sm font-medium text-slate-900">
-                        {formatDate(detail.date)} at {detail.time}
+                        {formatBookingSchedule(detail.date, detail.endDate)}{" "}
+                        <span className="text-slate-500 font-normal">at {detail.time}</span>
                       </p>
                     </div>
                   </div>
@@ -742,13 +751,15 @@ export default function BookingPage() {
                   <Button
                     onClick={() => setEditMode("reschedule")}
                     className="w-full justify-center"
+                    disabled={editBooking.status === "completed" || editBooking.status === "in_progress"}
                   >
                     Reschedule
                   </Button>
                   <Button
                     variant="outline"
                     onClick={() => setShowCancelConfirm(true)}
-                    className="w-full justify-center text-red-600 hover:bg-red-50 hover:border-red-200"
+                    disabled={editBooking.status === "completed" || editBooking.status === "in_progress"}
+                    className="w-full justify-center text-red-600 hover:bg-red-50 hover:border-red-200 disabled:text-slate-400 disabled:border-slate-200 disabled:hover:bg-white"
                   >
                     Cancel Booking
                   </Button>

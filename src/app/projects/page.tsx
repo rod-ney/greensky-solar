@@ -12,23 +12,55 @@ import {
   Users,
   Trash2,
   ShieldCheck,
+  ChevronDown,
 } from "lucide-react";
 import Button from "@/components/ui/Button";
 import StatusBadge from "@/components/ui/StatusBadge";
 import ProgressBar from "@/components/ui/ProgressBar";
 import Modal from "@/components/ui/Modal";
-import { formatCurrency, formatDate } from "@/lib/format";
+import { formatCurrencyDecimal, formatDate, formatQuotationNumberFromReportId } from "@/lib/format";
 import { getTodayInManila } from "@/lib/date-utils";
 import { toast } from "@/lib/toast";
 import type { Project, ProjectStatus, Priority, Technician } from "@/types";
+import type { Report } from "@/types";
 import type { Booking } from "@/types/client";
+
+function sanitizeBudgetInput(raw: string): string {
+  // Normalize comma decimal keyboards (e.g. numpad/locales) to dot.
+  const normalized = raw.replace(/,/g, ".");
+  const cleaned = normalized.replace(/[^\d.]/g, "");
+  const firstDot = cleaned.indexOf(".");
+  if (firstDot === -1) return cleaned;
+  const intPart = cleaned.slice(0, firstDot);
+  const fracPart = cleaned.slice(firstDot + 1).replace(/\./g, "");
+  return intPart + "." + fracPart;
+}
+
+type QuotationData = {
+  clientName?: string;
+  bookingId?: string;
+  location?: string;
+  materials?: string;
+  technician?: string;
+  installationStartDate?: string;
+  installationEndDate?: string;
+};
+
+function parseQuotationData(description: string): QuotationData | null {
+  try {
+    const parsed = JSON.parse(description) as Record<string, unknown>;
+    if (typeof parsed.clientName !== "string") return null;
+    return parsed as QuotationData;
+  } catch {
+    return null;
+  }
+}
 
 export default function ProjectsPage() {
   const [allProjects, setAllProjects] = useState<Project[]>([]);
   const [technicians, setTechnicians] = useState<Technician[]>([]);
-  const [clientContacts, setClientContacts] = useState<{ id: string; name: string; company: string }[]>([]);
-  const [clientsWithAddresses, setClientsWithAddresses] = useState<{ id: string; company: string; defaultAddress: string }[]>([]);
   const [bookings, setBookings] = useState<Booking[]>([]);
+  const [reports, setReports] = useState<Report[]>([]);
   const [view, setView] = useState<"grid" | "list">("grid");
   const [filterStatus, setFilterStatus] = useState<ProjectStatus | "all">("all");
   const [searchQuery, setSearchQuery] = useState("");
@@ -42,68 +74,60 @@ export default function ProjectsPage() {
   const [newProjectPriority, setNewProjectPriority] = useState<Priority>("medium");
   const [newProjectDescription, setNewProjectDescription] = useState("");
   const [newProjectLead, setNewProjectLead] = useState("");
+  const [newProjectTechnicians, setNewProjectTechnicians] = useState<string[]>([]);
+  const [showTechniciansDropdown, setShowTechniciansDropdown] = useState(false);
   const [projectToDelete, setProjectToDelete] = useState<Project | null>(null);
 
   useEffect(() => {
     const load = async () => {
       try {
-        const [projectsRes, techsRes, contactsRes, addressesRes, bookingsRes] = await Promise.all([
+        const [projectsRes, techsRes, bookingsRes, reportsRes] = await Promise.all([
           fetch("/api/projects", { cache: "no-store" }),
           fetch("/api/technicians", { cache: "no-store" }),
-          fetch("/api/clients/contacts", { cache: "no-store" }),
-          fetch("/api/clients/addresses", { cache: "no-store" }),
           fetch("/api/bookings", { cache: "no-store" }),
+          fetch("/api/reports", { cache: "no-store" }),
         ]);
         setAllProjects(projectsRes.ok ? (((await projectsRes.json()) as { items: Project[] }).items ?? []) : []);
         setTechnicians(techsRes.ok ? ((await techsRes.json()) as Technician[]) : []);
-        setClientContacts(
-          contactsRes.ok
-            ? ((await contactsRes.json()) as { id: string; name: string; company: string }[])
-            : []
-        );
-        setClientsWithAddresses(
-          addressesRes.ok
-            ? ((await addressesRes.json()) as { id: string; company: string; defaultAddress: string }[])
-            : []
-        );
         setBookings(bookingsRes.ok ? ((await bookingsRes.json()) as Booking[]) : []);
+        setReports(reportsRes.ok ? ((await reportsRes.json()) as Report[]) : []);
       } catch {
         setAllProjects([]);
         setTechnicians([]);
-        setClientContacts([]);
-        setClientsWithAddresses([]);
         setBookings([]);
+        setReports([]);
       }
     };
     void load();
   }, []);
 
-  const clientOptions = useMemo(() => {
-    const serviceLabel = (value: Booking["serviceType"]) =>
-      value
-        .split("_")
-        .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-        .join(" ");
-
-    const baseOptions = clientContacts.map((contact) => {
-      const addr = clientsWithAddresses.find((item) => item.id === contact.id);
-      return {
-        id: contact.id,
-        name: contact.name,
-        company: contact.company,
-        defaultAddress: addr?.defaultAddress ?? "",
-      };
-    });
-
-    const bookingOptions = bookings.map((booking) => ({
-      id: `booking-${booking.id}`,
-      name: `${booking.referenceNo} - ${serviceLabel(booking.serviceType)}`,
-      company: `${booking.referenceNo} (${serviceLabel(booking.serviceType)})`,
-      defaultAddress: booking.address,
-    }));
-
-    return [...baseOptions, ...bookingOptions];
-  }, [bookings, clientContacts, clientsWithAddresses]);
+  const quotationClientOptions = useMemo(() => {
+    return reports
+      .filter((report) => report.type === "quotation" && report.status === "approved")
+      .map((report) => {
+        const qData = parseQuotationData(report.description);
+        if (!qData?.clientName) return null;
+        const booking = qData.bookingId
+          ? bookings.find((item) => item.id === qData.bookingId)
+          : undefined;
+        const suggestedName = report.title.replace(/^Quotation\s*-\s*/i, "").trim();
+        return {
+          id: report.id,
+          label: `${qData.clientName} - ${formatQuotationNumberFromReportId(report.id)}`,
+          clientName: qData.clientName,
+          userId: booking?.userId,
+          bookingId: qData.bookingId,
+          name: suggestedName || `Project - ${qData.clientName}`,
+          location: qData.location ?? booking?.address ?? "",
+          startDate: qData.installationStartDate ?? getTodayInManila(),
+          endDate: qData.installationEndDate ?? qData.installationStartDate ?? getTodayInManila(),
+          budget: report.amount ?? 0,
+          description: qData.materials ?? "",
+          technician: qData.technician ?? "",
+        };
+      })
+      .filter((item): item is NonNullable<typeof item> => item !== null);
+  }, [bookings, reports]);
 
   const availableLeadTechnicians = useMemo(
     () => technicians.filter((technician) => technician.status === "available"),
@@ -148,6 +172,8 @@ export default function ProjectsPage() {
             setNewProjectPriority("medium");
             setNewProjectDescription("");
             setNewProjectLead("");
+            setNewProjectTechnicians([]);
+            setShowTechniciansDropdown(false);
           }}
         >
           New Project
@@ -274,7 +300,7 @@ export default function ProjectsPage() {
                   </span>
                 </div>
                 <span className="text-xs font-semibold text-slate-700">
-                  {formatCurrency(project.budget)}
+                  {formatCurrencyDecimal(project.budget)}
                 </span>
               </div>
               </Link>
@@ -338,7 +364,7 @@ export default function ProjectsPage() {
                     {project.client}
                   </td>
                   <td className="px-5 py-3.5 text-sm font-medium text-slate-700 hidden lg:table-cell">
-                    {formatCurrency(project.budget)}
+                    {formatCurrencyDecimal(project.budget)}
                   </td>
                   <td className="px-5 py-3.5 w-40">
                     <ProgressBar value={project.progress} />
@@ -381,6 +407,8 @@ export default function ProjectsPage() {
           setNewProjectPriority("medium");
           setNewProjectDescription("");
           setNewProjectLead("");
+          setNewProjectTechnicians([]);
+          setShowTechniciansDropdown(false);
           }}
         title="New Project"
         size="lg"
@@ -389,36 +417,36 @@ export default function ProjectsPage() {
           className="space-y-4"
           onSubmit={async (e) => {
             e.preventDefault();
-            const client = clientOptions.find((c) => c.id === newProjectClient);
+            const client = quotationClientOptions.find((c) => c.id === newProjectClient);
             if (!newProjectName.trim()) {
               toast.error("Project name is required.");
               return;
             }
             if (!client) {
-              toast.error("Please select a client.");
+              toast.error("Please select an approved quotation.");
               return;
             }
             let created: Project | null = null;
             try {
-              const bookingId =
-                newProjectClient.startsWith("booking-")
-                  ? newProjectClient.replace(/^booking-/, "")
-                  : undefined;
+              const bookingId = client.bookingId;
+              const resolvedUserId = client.userId;
 
               const response = await fetch("/api/projects", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                   name: newProjectName.trim(),
-                  client: client.company,
-                  location: newProjectLocation.trim() || client.defaultAddress || "",
+                  client: client.clientName,
+                  location: newProjectLocation.trim(),
                   startDate: newProjectStartDate || getTodayInManila(),
                   endDate: newProjectEndDate || getTodayInManila(),
                   budget: Number(newProjectBudget) || 0,
                   priority: newProjectPriority,
                   description: newProjectDescription.trim(),
                   projectLead: newProjectLead || undefined,
+                  assignedTechnicians: newProjectTechnicians,
                   bookingId,
+                  userId: resolvedUserId,
                 }),
               });
               if (!response.ok) {
@@ -441,6 +469,8 @@ export default function ProjectsPage() {
             setNewProjectPriority("medium");
             setNewProjectDescription("");
             setNewProjectLead("");
+            setNewProjectTechnicians([]);
+            setShowTechniciansDropdown(false);
             toast.success(`Project "${created?.name ?? newProjectName.trim()}" created successfully.`);
           }}
         >
@@ -466,19 +496,37 @@ export default function ProjectsPage() {
                 onChange={(e) => {
                   const clientId = e.target.value;
                   setNewProjectClient(clientId);
-                  const client = clientOptions.find((c) => c.id === clientId);
+                  const client = quotationClientOptions.find((c) => c.id === clientId);
                   if (client) {
-                    setNewProjectLocation(client.defaultAddress);
+                    setNewProjectLocation(client.location);
+                    setNewProjectStartDate(client.startDate);
+                    setNewProjectEndDate(client.endDate);
+                    setNewProjectBudget(String(client.budget));
+                    const matchedTechnician = technicians.find(
+                      (tech) =>
+                        tech.name.trim().toLowerCase() === client.technician.trim().toLowerCase()
+                    );
+                    if (matchedTechnician) {
+                      setNewProjectLead(matchedTechnician.id);
+                      setNewProjectTechnicians((prev) =>
+                        prev.includes(matchedTechnician.id) ? prev : [...prev, matchedTechnician.id]
+                      );
+                    }
                   } else {
                     setNewProjectLocation("");
+                    setNewProjectStartDate("");
+                    setNewProjectEndDate("");
+                    setNewProjectBudget("");
+                    setNewProjectLead("");
+                    setNewProjectTechnicians([]);
                   }
                 }}
                 className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand"
               >
-                <option value="">— Select client —</option>
-                {clientOptions.map((c) => (
+                <option value="">— Select approved quotation client —</option>
+                {quotationClientOptions.map((c) => (
                   <option key={c.id} value={c.id}>
-                    {c.name}
+                    {c.label}
                   </option>
                 ))}
               </select>
@@ -491,6 +539,8 @@ export default function ProjectsPage() {
                 type="text"
                 value={newProjectLocation}
                 onChange={(e) => setNewProjectLocation(e.target.value)}
+                readOnly
+                disabled
                 className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand"
                 placeholder="Project location (auto-filled from client)"
               />
@@ -503,8 +553,11 @@ export default function ProjectsPage() {
               </label>
               <input
                 type="date"
+                min={getTodayInManila()}
                 value={newProjectStartDate}
                 onChange={(e) => setNewProjectStartDate(e.target.value)}
+                readOnly
+                disabled
                 className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand"
               />
             </div>
@@ -514,8 +567,11 @@ export default function ProjectsPage() {
               </label>
               <input
                 type="date"
+                min={getTodayInManila()}
                 value={newProjectEndDate}
                 onChange={(e) => setNewProjectEndDate(e.target.value)}
+                readOnly
+                disabled
                 className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand"
               />
             </div>
@@ -526,11 +582,20 @@ export default function ProjectsPage() {
                 Budget
               </label>
               <input
-                type="number"
+                type="text"
+                inputMode="decimal"
+                autoComplete="off"
                 value={newProjectBudget}
-                onChange={(e) => setNewProjectBudget(e.target.value)}
+                onChange={(e) => setNewProjectBudget(sanitizeBudgetInput(e.target.value))}
+                onKeyDown={(e) => {
+                  if (e.key === "-" || e.key === "+" || e.key === "e" || e.key === "E") {
+                    e.preventDefault();
+                  }
+                }}
+                readOnly
+                disabled
                 className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand"
-                placeholder="0"
+                placeholder="0.00"
               />
             </div>
             <div>
@@ -570,6 +635,80 @@ export default function ProjectsPage() {
                 No available active technicians right now.
               </p>
             )}
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">
+              Technicians
+            </label>
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setShowTechniciansDropdown((prev) => !prev)}
+                className="flex min-h-[42px] w-full items-center justify-between rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none transition-colors hover:border-slate-300 focus:border-brand focus:ring-1 focus:ring-brand"
+              >
+                {newProjectTechnicians.length > 0 ? (
+                  <span className="flex flex-wrap gap-1.5 pr-3">
+                    {newProjectTechnicians.map((techId) => {
+                      const label = technicians.find((tech) => tech.id === techId)?.name ?? techId;
+                      return (
+                        <span
+                          key={techId}
+                          className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800"
+                        >
+                          {label}
+                        </span>
+                      );
+                    })}
+                  </span>
+                ) : (
+                  <span className="text-slate-400">Select technicians</span>
+                )}
+                <ChevronDown
+                  className={`h-4 w-4 shrink-0 text-slate-400 transition-transform ${
+                    showTechniciansDropdown ? "rotate-180" : ""
+                  }`}
+                />
+              </button>
+              {showTechniciansDropdown && (
+                <div className="absolute z-20 mt-1 w-full rounded-lg border border-slate-200 bg-white p-2 shadow-lg">
+                  <div className="grid grid-cols-1 gap-2">
+                    {technicians.map((tech) => {
+                      const checked = newProjectTechnicians.includes(tech.id);
+                      return (
+                        <button
+                          key={tech.id}
+                          type="button"
+                          onClick={() =>
+                            setNewProjectTechnicians((prev) =>
+                              checked ? prev.filter((id) => id !== tech.id) : [...prev, tech.id]
+                            )
+                          }
+                          className={`flex items-center justify-between rounded-lg border px-3 py-2 text-left text-sm transition-colors ${
+                            checked
+                              ? "border-brand bg-brand-50 text-brand"
+                              : "border-slate-200 bg-white text-slate-700 hover:border-slate-300"
+                          }`}
+                        >
+                          <span className="font-medium">{tech.name}</span>
+                          <span
+                            className={`inline-flex h-4 w-4 items-center justify-center rounded border text-[10px] font-bold ${
+                              checked
+                                ? "border-brand bg-brand text-white"
+                                : "border-slate-300 text-transparent"
+                            }`}
+                          >
+                            ✓
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+            <p className="mt-1 text-[11px] text-slate-500">
+              You can select multiple technicians.
+            </p>
           </div>
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">

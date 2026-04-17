@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import {
   updateReportStatusInDb,
+  updateReportInDb,
   deleteReportFromDb,
 } from "@/lib/server/general-repository";
 import { requireAdminOrTechnician } from "@/lib/server/auth-guard";
@@ -9,6 +10,31 @@ import type { Report } from "@/types";
 type RouteContext = {
   params: Promise<{ id: string }>;
 };
+
+export async function PUT(request: Request, context: RouteContext) {
+  const auth = await requireAdminOrTechnician();
+  if (auth instanceof NextResponse) return auth;
+  try {
+    const { id } = await context.params;
+    const body = (await request.json()) as Partial<
+      Pick<Report, "title" | "description" | "amount" | "projectId" | "projectName">
+    >;
+    const updated = await updateReportInDb(id, {
+      title: body.title,
+      description: body.description,
+      amount: body.amount ?? null,
+      projectId: body.projectId ?? null,
+      projectName: body.projectName ?? null,
+    });
+    if (!updated) {
+      return NextResponse.json({ error: "Report not found." }, { status: 404 });
+    }
+    return NextResponse.json(updated);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+}
 
 export async function PATCH(request: Request, context: RouteContext) {
   const auth = await requireAdminOrTechnician();

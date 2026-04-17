@@ -1,17 +1,37 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Search, Edit2, Trash2, Filter, CalendarDays, Clock, MapPin, Navigation, Loader2 } from "lucide-react";
+import { Search, Edit2, Trash2, Filter, CalendarDays, Clock, Navigation, Eye } from "lucide-react";
 import StatusBadge from "@/components/ui/StatusBadge";
 import Modal from "@/components/ui/Modal";
 import ConfirmModal from "@/components/ui/ConfirmModal";
 import Button from "@/components/ui/Button";
 import { toast } from "@/lib/toast";
-import { formatCurrency, formatDate } from "@/lib/format";
-import { SERVICE_LABELS, BOOKING_STATUS_OPTIONS } from "@/lib/constants";
+import { formatBookingSchedule, formatCurrency } from "@/lib/format";
+import {
+  SERVICE_LABELS,
+  BOOKING_STATUS_OPTIONS,
+  BOOKING_STATUS_LABELS,
+} from "@/lib/constants";
 import type { Booking, BookingStatus } from "@/types/client";
 
 export default function BookingsPage() {
+  const EDITABLE_STATUS_TRANSITIONS: Record<BookingStatus, BookingStatus[]> = {
+    pending: ["pending", "confirmed", "cancelled"],
+    confirmed: ["confirmed", "in_progress", "completed", "cancelled"],
+    in_progress: ["in_progress", "completed", "cancelled"],
+    completed: ["completed"],
+    cancelled: ["cancelled"],
+  };
+  const CANCELLATION_REASONS = [
+    "Client requested cancellation",
+    "Technician unavailable",
+    "Scheduling conflict",
+    "Out of service area",
+    "Duplicate booking",
+    "Other",
+  ] as const;
+
   const [allBookings, setAllBookings] = useState<Booking[]>([]);
   useEffect(() => {
     const loadBookings = async () => {
@@ -32,9 +52,11 @@ export default function BookingsPage() {
   const [statusFilter, setStatusFilter] = useState<BookingStatus | "all">("all");
   const [showEditModal, setShowEditModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [viewTarget, setViewTarget] = useState<Booking | null>(null);
   const [showSaveBookingConfirm, setShowSaveBookingConfirm] = useState(false);
   const [saveBookingSubmitting, setSaveBookingSubmitting] = useState(false);
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
+  const [editStatus, setEditStatus] = useState<BookingStatus>("pending");
   const editFormRef = useRef<HTMLFormElement | null>(null);
   const [loadingDirectionsId, setLoadingDirectionsId] = useState<string | null>(null);
 
@@ -201,16 +223,13 @@ export default function BookingsPage() {
                   Service
                 </th>
                 <th className="px-5 py-3 text-left text-xs font-medium text-slate-500 hidden md:table-cell">
-                  Schedule
+                  Start – end
                 </th>
                 <th className="px-5 py-3 text-left text-xs font-medium text-slate-500">
                   Status
                 </th>
-                <th className="px-5 py-3 text-left text-xs font-medium text-slate-500 hidden lg:table-cell">
-                  Technician
-                </th>
                 <th className="px-5 py-3 text-left text-xs font-medium text-slate-500 hidden xl:table-cell">
-                  Address
+                  Location
                 </th>
                 <th className="px-5 py-3 text-right text-xs font-medium text-slate-500 hidden sm:table-cell">
                   Amount
@@ -223,7 +242,7 @@ export default function BookingsPage() {
             <tbody className="divide-y divide-slate-100">
               {filteredBookings.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-5 py-12 text-center">
+                  <td colSpan={7} className="px-5 py-12 text-center">
                     <p className="text-sm text-slate-400">No bookings found</p>
                   </td>
                 </tr>
@@ -235,9 +254,14 @@ export default function BookingsPage() {
                   >
                     {/* Reference */}
                     <td className="px-5 py-3.5">
-                      <span className="text-sm font-semibold text-brand">
-                        {booking.referenceNo}
-                      </span>
+                      <div className="space-y-0.5">
+                        <span className="block text-sm font-semibold text-brand">
+                          {booking.referenceNo}
+                        </span>
+                        <span className="block text-xs text-slate-500">
+                          {booking.clientName ?? "Client"}
+                        </span>
+                      </div>
                     </td>
 
                     {/* Service */}
@@ -253,8 +277,8 @@ export default function BookingsPage() {
                     {/* Schedule */}
                     <td className="px-5 py-3.5 hidden md:table-cell">
                       <div className="flex items-center gap-1.5 text-sm text-slate-600">
-                        <CalendarDays className="h-3.5 w-3.5 text-slate-400" />
-                        {formatDate(booking.date)}
+                        <CalendarDays className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                        <span>{formatBookingSchedule(booking.date, booking.endDate)}</span>
                       </div>
                       <div className="flex items-center gap-1.5 text-xs text-slate-400 mt-0.5">
                         <Clock className="h-3 w-3" />
@@ -267,22 +291,21 @@ export default function BookingsPage() {
                       <StatusBadge status={booking.status} />
                     </td>
 
-                    {/* Technician / Project Lead */}
-                    <td className="px-5 py-3.5 hidden lg:table-cell">
-                      <span className="text-sm text-slate-600">
-                        {booking.projectLead ?? booking.technician}
-                      </span>
-                      {booking.projectLead && (
-                        <p className="text-xs text-slate-400 mt-0.5">Project Lead</p>
-                      )}
-                    </td>
-
-                    {/* Address */}
+                    {/* Location */}
                     <td className="px-5 py-3.5 hidden xl:table-cell">
-                      <div className="flex items-center gap-1.5 text-sm text-slate-500 max-w-[200px]">
-                        <MapPin className="h-3.5 w-3.5 shrink-0 text-slate-400" />
-                        <span className="truncate">{booking.address}</span>
-                      </div>
+                      {booking.address?.trim() ? (
+                        <Button
+                          size="sm"
+                          icon={Navigation}
+                          onClick={() => openLocation(booking)}
+                          disabled={loadingDirectionsId === booking.id}
+                          className="bg-green-600 text-white hover:bg-green-700"
+                        >
+                          {loadingDirectionsId === booking.id ? "Opening..." : "Get Direction"}
+                        </Button>
+                      ) : (
+                        <span className="text-xs text-slate-400">—</span>
+                      )}
                     </td>
 
                     {/* Amount */}
@@ -297,23 +320,17 @@ export default function BookingsPage() {
                     {/* Actions */}
                     <td className="px-5 py-3.5">
                       <div className="flex justify-end gap-1">
-                        {booking.address?.trim() ? (
-                          <button
-                            onClick={() => openLocation(booking)}
-                            disabled={loadingDirectionsId === booking.id}
-                            title="Get Location"
-                            className="flex h-7 w-7 items-center justify-center rounded text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors disabled:opacity-70"
-                          >
-                            {loadingDirectionsId === booking.id ? (
-                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                            ) : (
-                              <Navigation className="h-3.5 w-3.5" />
-                            )}
-                          </button>
-                        ) : null}
+                        <button
+                          onClick={() => setViewTarget(booking)}
+                          title="View booking details"
+                          className="flex h-7 w-7 items-center justify-center rounded text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors"
+                        >
+                          <Eye className="h-3.5 w-3.5" />
+                        </button>
                         <button
                           onClick={() => {
                             setSelectedBooking(booking);
+                            setEditStatus(booking.status);
                             setShowEditModal(true);
                           }}
                           title="Edit booking"
@@ -360,19 +377,20 @@ export default function BookingsPage() {
               {
                 method: "PATCH",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  serviceType: formData.get("serviceType"),
-                  status: formData.get("status"),
-                  date: formData.get("date"),
-                  time: formData.get("time"),
-                  technician: formData.get("technician"),
-                  address: formData.get("address"),
-                  notes: formData.get("notes"),
-                  amount: Number(formData.get("amount") ?? 0),
-                  ...(String(formData.get("address")).trim() !== selectedBooking.address?.trim()
-                    ? { lat: null, lng: null, addressId: null }
-                    : {}),
-                }),
+                body: JSON.stringify((() => {
+                  const status = String(
+                    formData.get("status") ?? selectedBooking.status
+                  ) as BookingStatus;
+                  if (status !== "cancelled") {
+                    return { status };
+                  }
+                  const reason = String(formData.get("cancelReason") ?? "").trim();
+                  const cancelNotes = String(formData.get("cancelNotes") ?? "").trim();
+                  return {
+                    status,
+                    notes: `Cancellation reason: ${reason}${cancelNotes ? `\nNotes: ${cancelNotes}` : ""}`,
+                  };
+                })()),
               }
             );
             const payload = (await response.json()) as Booking | { error?: string };
@@ -384,7 +402,7 @@ export default function BookingsPage() {
             const updated = payload as Booking;
             setAllBookings((prev) =>
               prev.map((booking) =>
-                booking.id === updated.id ? updated : booking
+                booking.id === updated.id ? { ...booking, ...updated } : booking
               )
             );
             setShowEditModal(false);
@@ -419,6 +437,7 @@ export default function BookingsPage() {
         onClose={() => {
           setShowEditModal(false);
           setSelectedBooking(null);
+          setEditStatus("pending");
         }}
         title="Edit Booking"
         size="lg"
@@ -439,115 +458,61 @@ export default function BookingsPage() {
               </span>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">
-                  Service Type
-                </label>
-                <select
-                  name="serviceType"
-                  defaultValue={selectedBooking.serviceType}
-                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand"
-                >
-                  {Object.entries(SERVICE_LABELS).map(([value, label]) => (
-                    <option key={value} value={value}>
-                      {label}
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">
+                Status
+              </label>
+              <select
+                name="status"
+                value={editStatus}
+                onChange={(e) => setEditStatus(e.target.value as BookingStatus)}
+                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand"
+              >
+                {EDITABLE_STATUS_TRANSITIONS[selectedBooking.status].map(
+                  (statusValue) => (
+                    <option key={statusValue} value={statusValue}>
+                      {BOOKING_STATUS_LABELS[statusValue]}
                     </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">
-                  Status
-                </label>
-                <select
-                  name="status"
-                  defaultValue={selectedBooking.status}
-                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand"
-                >
-                  {BOOKING_STATUS_OPTIONS
-                    .filter((o) => o.value !== "all")
-                    .map((opt) => (
-                      <option key={opt.value} value={opt.value}>
-                        {opt.label}
+                  )
+                )}
+              </select>
+            </div>
+
+            {editStatus === "cancelled" && (
+              <>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">
+                    Cancellation Reason
+                  </label>
+                  <select
+                    name="cancelReason"
+                    defaultValue=""
+                    required
+                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand"
+                  >
+                    <option value="" disabled>
+                      Select reason
+                    </option>
+                    {CANCELLATION_REASONS.map((reason) => (
+                      <option key={reason} value={reason}>
+                        {reason}
                       </option>
                     ))}
-                </select>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">
-                  Date
-                </label>
-                <input
-                  name="date"
-                  type="date"
-                  defaultValue={selectedBooking.date}
-                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">
-                  Time
-                </label>
-                <input
-                  name="time"
-                  type="text"
-                  defaultValue={selectedBooking.time}
-                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand"
-                />
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">
-                Technician
-              </label>
-              <input
-                name="technician"
-                type="text"
-                defaultValue={selectedBooking.technician}
-                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">
-                Address
-              </label>
-              <input
-                name="address"
-                type="text"
-                defaultValue={selectedBooking.address}
-                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">
-                Notes
-              </label>
-              <textarea
-                name="notes"
-                defaultValue={selectedBooking.notes}
-                rows={2}
-                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand resize-none"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">
-                Amount (PHP)
-              </label>
-              <input
-                name="amount"
-                type="number"
-                defaultValue={selectedBooking.amount}
-                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand"
-              />
-            </div>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">
+                    Notes
+                  </label>
+                  <textarea
+                    name="cancelNotes"
+                    rows={3}
+                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand resize-none"
+                    placeholder="Add more details about this cancellation..."
+                  />
+                </div>
+              </>
+            )}
 
             <div className="flex justify-end gap-2 pt-2">
               <Button
@@ -556,6 +521,7 @@ export default function BookingsPage() {
                 onClick={() => {
                   setShowEditModal(false);
                   setSelectedBooking(null);
+                  setEditStatus("pending");
                 }}
               >
                 Cancel
@@ -563,6 +529,72 @@ export default function BookingsPage() {
               <Button type="submit">Save Changes</Button>
             </div>
           </form>
+        )}
+      </Modal>
+
+      {/* View Booking Details Modal */}
+      <Modal
+        isOpen={!!viewTarget}
+        onClose={() => setViewTarget(null)}
+        title="Booking Details"
+        size="md"
+      >
+        {viewTarget && (
+          <div className="space-y-4">
+            <div className="rounded-lg border border-slate-200 bg-slate-50/60 p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs text-slate-500">Reference</p>
+                  <p className="text-sm font-semibold text-brand">{viewTarget.referenceNo}</p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Client: <span className="font-medium text-slate-700">{viewTarget.clientName ?? "Client"}</span>
+                  </p>
+                </div>
+                <StatusBadge status={viewTarget.status} />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 text-sm">
+              <div>
+                <p className="text-xs text-slate-500">Service</p>
+                <p className="font-medium text-slate-900">{SERVICE_LABELS[viewTarget.serviceType]}</p>
+              </div>
+              <div>
+                <p className="text-xs text-slate-500">Amount</p>
+                <p className="font-medium text-slate-900">
+                  {viewTarget.amount > 0 ? formatCurrency(viewTarget.amount) : "—"}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-slate-500">Start – end</p>
+                <p className="font-medium text-slate-900">
+                  {formatBookingSchedule(viewTarget.date, viewTarget.endDate)}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-slate-500">Time</p>
+                <p className="font-medium text-slate-900">{viewTarget.time}</p>
+              </div>
+            </div>
+
+            <div>
+              <p className="text-xs text-slate-500">Location</p>
+              <p className="text-sm text-slate-700 break-words">{viewTarget.address || "—"}</p>
+            </div>
+
+            <div>
+              <p className="text-xs text-slate-500">Notes</p>
+              <p className="text-sm text-slate-700 whitespace-pre-wrap">
+                {viewTarget.notes?.trim() ? viewTarget.notes : "—"}
+              </p>
+            </div>
+
+            <div className="flex justify-end pt-2">
+              <Button variant="outline" onClick={() => setViewTarget(null)}>
+                Close
+              </Button>
+            </div>
+          </div>
         )}
       </Modal>
 

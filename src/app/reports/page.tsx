@@ -13,15 +13,17 @@ import {
   TrendingUp,
   Send,
   Plus,
+  Trash2,
 } from "lucide-react";
 import Button from "@/components/ui/Button";
 import StatusBadge from "@/components/ui/StatusBadge";
 import Modal from "@/components/ui/Modal";
-import { formatCurrency } from "@/lib/format";
+import { formatCurrency, formatDate } from "@/lib/format";
 import { getTodayInManila } from "@/lib/date-utils";
 import { toast } from "@/lib/toast";
 import type { Project, Report, Technician } from "@/types";
 import type { DocumentType } from "@/types/client";
+import { downloadQuotationReportPdf } from "@/lib/pdf/quotation-report-pdf";
 
 const createReportTypes: { value: DocumentType; label: string }[] = [
   { value: "warranty", label: "Warranty" },
@@ -77,6 +79,54 @@ function parseReportDescription(desc: string): {
   return { cleanText, techType, attachment };
 }
 
+type QuotationMaterialItem = {
+  description: string;
+  qty: number;
+  amt: number;
+  total: number;
+};
+
+type QuotationPayload = {
+  clientName?: string;
+  location?: string;
+  clientNumber?: string;
+  technician?: string;
+  adminComment?: string;
+  installationStartDate?: string;
+  installationEndDate?: string;
+  materials?: string;
+  materialItems?: QuotationMaterialItem[];
+};
+
+function parseQuotationPayload(desc: string): QuotationPayload | null {
+  try {
+    const parsed = JSON.parse(desc) as Record<string, unknown>;
+    if (typeof parsed !== "object" || parsed == null) return null;
+    if (typeof parsed.clientName !== "string") return null;
+    return parsed as QuotationPayload;
+  } catch {
+    return null;
+  }
+}
+
+function getQuotationPreview(desc: string): string {
+  const q = parseQuotationPayload(desc);
+  if (!q) return desc;
+  const parts = [
+    q.clientName ? `Client: ${q.clientName}` : null,
+    q.location ? `Location: ${q.location}` : null,
+    q.installationStartDate && q.installationEndDate
+      ? `Installation: ${q.installationStartDate} to ${q.installationEndDate}`
+      : null,
+    q.technician ? `Technician: ${q.technician}` : null,
+  ].filter(Boolean);
+  return parts.join(" | ");
+}
+
+function safeFileName(value: string): string {
+  return value.replace(/[\\/:*?"<>|]/g, "").trim();
+}
+
 type ClientOption = { id: string; name: string; email?: string };
 
 export default function ReportsPage() {
@@ -107,6 +157,8 @@ export default function ReportsPage() {
   const [showCreateConfirm, setShowCreateConfirm] = useState(false);
   const [showApproveConfirm, setShowApproveConfirm] = useState(false);
   const [showRejectConfirm, setShowRejectConfirm] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<Report | null>(null);
+  const [rejectComment, setRejectComment] = useState("");
 
   const loadReports = async () => {
     try {
@@ -183,6 +235,16 @@ export default function ReportsPage() {
 
   const openSendModal = (report: Report) => {
     setSendReportTarget(report);
+    if (report.type === "quotation") {
+      const q = parseQuotationPayload(report.description);
+      const matchedClient = clientOptions.find(
+        (c) =>
+          c.name.trim().toLowerCase() === (q?.clientName ?? "").trim().toLowerCase()
+      );
+      setRecipientType("client");
+      setRecipientId(matchedClient?.id ?? "");
+      return;
+    }
     setRecipientType("client");
     setRecipientId(clientOptions[0]?.id ?? "");
   };
@@ -218,6 +280,15 @@ export default function ReportsPage() {
 
   const handleSendReport = async () => {
     if (!sendReportTarget || !recipientId) return;
+    if (
+      sendReportTarget.type === "quotation" &&
+      (!quotationLockedClient ||
+        recipientType !== "client" ||
+        recipientId !== quotationLockedClient.id)
+    ) {
+      toast.error("You can only send this quotation to its selected client.");
+      return;
+    }
     const recipient =
       recipientType === "client"
         ? clientOptions.find((c) => c.id === recipientId)?.name
@@ -318,6 +389,30 @@ export default function ReportsPage() {
     const run = async () => {
       if (!selectedReport) return;
       try {
+        if (selectedReport.type === "quotation") {
+          const qData = parseQuotationPayload(selectedReport.description);
+          if (qData) {
+            const descriptionWithComment = JSON.stringify({
+              ...qData,
+              adminComment: rejectComment.trim() || undefined,
+            });
+            const putRes = await fetch(`/api/reports/${selectedReport.id}`, {
+              method: "PUT",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                title: selectedReport.title,
+                description: descriptionWithComment,
+                amount: selectedReport.amount ?? null,
+                projectName: selectedReport.projectName ?? null,
+              }),
+            });
+            if (!putRes.ok) {
+              const payload = (await putRes.json()) as { error?: string };
+              toast.error(payload.error ?? "Failed to save rejection note.");
+              return;
+            }
+          }
+        }
         const response = await fetch(`/api/reports/${selectedReport.id}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
@@ -339,6 +434,7 @@ export default function ReportsPage() {
         setShowDetailModal(false);
         setSelectedReport(null);
         setShowRejectConfirm(false);
+        setRejectComment("");
         toast.success("Report rejected.");
       } catch {
         toast.error("Failed to reject report.");
@@ -347,7 +443,124 @@ export default function ReportsPage() {
     void run();
   };
 
+  const handleDeleteReport = () => {
+    const run = async () => {
+      if (!deleteTarget) return;
+      try {
+        const res = await fetch(`/api/reports/${deleteTarget.id}`, { method: "DELETE" });
+        if (!res.ok) {
+          const data = (await res.json()) as { error?: string };
+          toast.error(data.error ?? "Failed to delete report.");
+          return;
+        }
+        setReports((prev) => prev.filter((r) => r.id !== deleteTarget.id));
+        if (selectedReport?.id === deleteTarget.id) {
+          setSelectedReport(null);
+          setShowDetailModal(false);
+        }
+        setDeleteTarget(null);
+        toast.success("Report deleted.");
+      } catch {
+        toast.error("Failed to delete report.");
+      }
+    };
+    void run();
+  };
+
+  const handleDownloadReportPdf = async (report: Report) => {
+    try {
+      const { jsPDF } = await import("jspdf");
+      const doc = new jsPDF({ unit: "mm", format: "a4" });
+      if (report.type === "quotation") {
+        const q = parseQuotationPayload(report.description);
+        if (!q) {
+          toast.error("Quotation data is incomplete.");
+          return;
+        }
+        const materialItems =
+          Array.isArray(q.materialItems) && q.materialItems.length > 0
+            ? q.materialItems
+            : (q.materials ?? "")
+                .split("\n")
+                .map((entry) => entry.trim())
+                .filter(Boolean)
+                .map((entry) => ({
+                  description: entry,
+                  qty: 1,
+                  amt: 0,
+                  total: 0,
+                }));
+        await downloadQuotationReportPdf({
+          reportId: report.id,
+          submittedAt: report.submittedAt,
+          submittedBy: report.submittedBy,
+          amount: report.amount,
+          clientName: q.clientName,
+          location: q.location,
+          clientNumber: q.clientNumber,
+          technician: q.technician || report.submittedBy,
+          materialItems,
+          dpPercent: 50,
+        });
+      } else {
+        const left = 14;
+        const right = 196;
+        let y = 18;
+        const line = (label: string, value: string) => {
+          doc.setFont("helvetica", "bold");
+          doc.text(label, left, y);
+          doc.setFont("helvetica", "normal");
+          doc.text(value || "-", left + 34, y);
+          y += 7;
+        };
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(15);
+        doc.text("GreenSky Solar - Report", left, y);
+        y += 10;
+        doc.setLineWidth(0.3);
+        doc.line(left, y, right, y);
+        y += 8;
+        doc.setFontSize(10.5);
+        line("Title:", report.title);
+        line("Type:", typeLabels[report.type] ?? report.type);
+        line("Status:", report.status);
+        line("Submitted By:", report.submittedBy);
+        line("Submitted Date:", formatDate(report.submittedAt));
+        line("Project:", report.projectName ?? "-");
+        line("Amount:", report.amount != null ? formatCurrency(report.amount) : "-");
+        const { cleanText } = parseReportDescription(report.description);
+        y += 2;
+        doc.setFont("helvetica", "bold");
+        doc.text("Description", left, y);
+        y += 6;
+        doc.setFont("helvetica", "normal");
+        const descriptionLines = doc.splitTextToSize(cleanText || "-", right - left);
+        doc.text(descriptionLines, left, y);
+        const baseName = `Report - ${safeFileName(report.title)}`;
+        doc.save(`${baseName}.pdf`);
+      }
+    } catch {
+      toast.error("Failed to download report PDF.");
+    }
+  };
+
   const canSend = recipientId && sendReportTarget;
+  const quotationLockedClient =
+    sendReportTarget?.type === "quotation"
+      ? clientOptions.find(
+          (c) =>
+            c.name.trim().toLowerCase() ===
+            (parseQuotationPayload(sendReportTarget.description)?.clientName ?? "")
+              .trim()
+              .toLowerCase()
+        ) ?? null
+      : null;
+  const canSendSelectedQuotationClient =
+    !sendReportTarget ||
+    sendReportTarget.type !== "quotation" ||
+    (recipientType === "client" &&
+      !!quotationLockedClient &&
+      recipientId === quotationLockedClient.id);
 
   const openCreateReport = () => {
     setShowCreateReport(true);
@@ -504,7 +717,9 @@ export default function ReportsPage() {
                 </div>
 
                 <p className="mt-2 text-xs text-slate-600 line-clamp-2">
-                  {report.description}
+                  {report.type === "quotation"
+                    ? getQuotationPreview(report.description)
+                    : report.description}
                 </p>
 
                 <div className="mt-3 flex items-center gap-2">
@@ -535,8 +750,21 @@ export default function ReportsPage() {
                 >
                   <Eye className="h-4 w-4" />
                 </button>
-                <button className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600">
+                <button
+                  onClick={() => {
+                    void handleDownloadReportPdf(report);
+                  }}
+                  className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                  title="Download PDF"
+                >
                   <Download className="h-4 w-4" />
+                </button>
+                <button
+                  onClick={() => setDeleteTarget(report)}
+                  className="flex h-8 w-8 items-center justify-center rounded-lg text-red-500 hover:bg-red-50"
+                  title="Delete report"
+                >
+                  <Trash2 className="h-4 w-4" />
                 </button>
               </div>
             </div>
@@ -658,6 +886,81 @@ export default function ReportsPage() {
             <div>
               <p className="text-xs font-medium text-slate-500 mb-1">Description</p>
               {(() => {
+                if (selectedReport.type === "quotation") {
+                  const q = parseQuotationPayload(selectedReport.description);
+                  if (q) {
+                    const items =
+                      Array.isArray(q.materialItems) && q.materialItems.length > 0
+                        ? q.materialItems
+                        : (q.materials ?? "")
+                            .split("\n")
+                            .map((line) => line.trim())
+                            .filter(Boolean)
+                            .map((line) => ({
+                              description: line,
+                              qty: 1,
+                              amt: 0,
+                              total: 0,
+                            }));
+                    return (
+                      <div className="space-y-3 rounded-lg bg-slate-50 p-3">
+                        <div className="grid grid-cols-2 gap-2 text-sm">
+                          <p><span className="text-slate-500">Client:</span> <span className="font-medium text-slate-900">{q.clientName ?? "-"}</span></p>
+                          <p><span className="text-slate-500">Contact:</span> <span className="font-medium text-slate-900">{q.clientNumber ?? "-"}</span></p>
+                          <p><span className="text-slate-500">Location:</span> <span className="font-medium text-slate-900">{q.location ?? "-"}</span></p>
+                          <p><span className="text-slate-500">Technician:</span> <span className="font-medium text-slate-900">{q.technician ?? "-"}</span></p>
+                          <p className="col-span-2">
+                            <span className="text-slate-500">Installation:</span>{" "}
+                            <span className="font-medium text-slate-900">
+                              {q.installationStartDate && q.installationEndDate
+                                ? `${q.installationStartDate} to ${q.installationEndDate}`
+                                : "-"}
+                            </span>
+                          </p>
+                          {q.adminComment && (
+                            <p className="col-span-2">
+                              <span className="text-slate-500">Admin Comment:</span>{" "}
+                              <span className="font-medium text-red-700">{q.adminComment}</span>
+                            </p>
+                          )}
+                        </div>
+                        <div>
+                          <p className="mb-1 text-xs font-medium text-slate-500">Materials</p>
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-xs">
+                              <thead>
+                                <tr className="text-left text-slate-500">
+                                  <th className="pb-1">Description</th>
+                                  <th className="pb-1">QTY</th>
+                                  <th className="pb-1">AMT</th>
+                                  <th className="pb-1">TOTAL</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {items.length > 0 ? (
+                                  items.map((item, idx) => (
+                                    <tr key={idx} className="border-t border-slate-200">
+                                      <td className="py-1 text-slate-700">{item.description}</td>
+                                      <td className="py-1 text-slate-700">{item.qty}</td>
+                                      <td className="py-1 text-slate-700">{item.amt}</td>
+                                      <td className="py-1 text-slate-700">{item.total}</td>
+                                    </tr>
+                                  ))
+                                ) : (
+                                  <tr>
+                                    <td colSpan={4} className="py-1 text-slate-500">
+                                      No materials listed.
+                                    </td>
+                                  </tr>
+                                )}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  }
+                }
                 const { cleanText, techType, attachment } = parseReportDescription(
                   selectedReport.description
                 );
@@ -703,6 +1006,9 @@ export default function ReportsPage() {
                 variant="outline"
                 icon={Download}
                 size="sm"
+                onClick={() => {
+                  if (selectedReport) void handleDownloadReportPdf(selectedReport);
+                }}
               >
                 Download
               </Button>
@@ -749,6 +1055,7 @@ export default function ReportsPage() {
               <select
                 value={recipientType}
                 onChange={(e) => {
+                  if (sendReportTarget.type === "quotation") return;
                   const val = e.target.value as "client" | "technician";
                   setRecipientType(val);
                   setRecipientId(
@@ -758,6 +1065,7 @@ export default function ReportsPage() {
                   );
                 }}
                 className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand"
+                disabled={sendReportTarget.type === "quotation"}
               >
                 <option value="client">Client</option>
                 <option value="technician">Technician</option>
@@ -770,14 +1078,21 @@ export default function ReportsPage() {
               </label>
               <select
                 value={recipientId}
-                onChange={(e) => setRecipientId(e.target.value)}
+                onChange={(e) => {
+                  if (sendReportTarget.type === "quotation") return;
+                  setRecipientId(e.target.value);
+                }}
                 className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand"
+                disabled={sendReportTarget.type === "quotation"}
               >
                 <option value="">
                   — Select {recipientType === "client" ? "client" : "technician"} —
                 </option>
                 {recipientType === "client"
-                  ? clientOptions.map((c) => (
+                  ? (sendReportTarget.type === "quotation" && quotationLockedClient
+                      ? [quotationLockedClient]
+                      : clientOptions
+                    ).map((c) => (
                       <option key={c.id} value={c.id}>
                         {c.name}
                       </option>
@@ -789,6 +1104,11 @@ export default function ReportsPage() {
                     ))}
               </select>
             </div>
+            {sendReportTarget.type === "quotation" && (
+              <p className="text-xs text-slate-500">
+                Recipient is locked to the client selected in this quotation.
+              </p>
+            )}
 
             <div className="flex justify-end gap-2 border-t border-slate-200 pt-4 mt-2">
               <Button variant="outline" onClick={() => requestClose("send")}>
@@ -797,7 +1117,7 @@ export default function ReportsPage() {
               <Button
                 icon={Send}
                 onClick={() => setShowSendConfirm(true)}
-                disabled={!canSend}
+                disabled={!canSend || !canSendSelectedQuotationClient}
               >
                 Send Report
               </Button>
@@ -950,7 +1270,7 @@ export default function ReportsPage() {
             <Button variant="outline" onClick={() => setShowSendConfirm(false)}>
               Cancel
             </Button>
-            <Button icon={Send} onClick={handleSendReport}>
+            <Button onClick={handleSendReport}>
               Confirm Send
             </Button>
           </div>
@@ -973,7 +1293,7 @@ export default function ReportsPage() {
             <Button variant="outline" onClick={() => setShowCreateConfirm(false)}>
               Cancel
             </Button>
-            <Button icon={Plus} onClick={handleCreateReportConfirm}>
+            <Button onClick={handleCreateReportConfirm}>
               Confirm Create
             </Button>
           </div>
@@ -1010,6 +1330,20 @@ export default function ReportsPage() {
         size="sm"
       >
         <div className="space-y-4">
+          {selectedReport?.type === "quotation" && (
+            <div>
+              <label className="mb-1.5 block text-xs font-medium text-slate-600">
+                Note for Technician (optional)
+              </label>
+              <textarea
+                rows={3}
+                value={rejectComment}
+                onChange={(e) => setRejectComment(e.target.value)}
+                placeholder="Add comment so technician knows what to revise..."
+                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand"
+              />
+            </div>
+          )}
           <p className="text-sm text-slate-600">
             Are you sure you want to reject this report?
           </p>
@@ -1019,6 +1353,31 @@ export default function ReportsPage() {
             </Button>
             <Button variant="danger" onClick={handleRejectConfirm}>
               Confirm Reject
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Delete Report Confirmation */}
+      <Modal
+        isOpen={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        title="Delete Report"
+        size="sm"
+        zIndex={60}
+      >
+        <div className="flex flex-col gap-4">
+          <p className="text-sm leading-relaxed text-slate-600">
+            Are you sure you want to delete{" "}
+            <span className="font-semibold text-slate-900">{deleteTarget?.title}</span>? This action
+            cannot be undone.
+          </p>
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button variant="outline" onClick={() => setDeleteTarget(null)}>
+              Cancel
+            </Button>
+            <Button variant="danger" onClick={handleDeleteReport}>
+              Delete
             </Button>
           </div>
         </div>

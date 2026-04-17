@@ -14,12 +14,15 @@ import {
   List,
   Check,
   X,
+  Trash2,
 } from "lucide-react";
 import Button from "@/components/ui/Button";
 import Modal from "@/components/ui/Modal";
-import { formatDate } from "@/lib/format";
+import { formatCurrency, formatDate, formatQuotationNumberFromReportId } from "@/lib/format";
 import { toast } from "@/lib/toast";
 import type { DocumentType, Document } from "@/types/client";
+import type { Report } from "@/types";
+import { downloadQuotationReportPdf } from "@/lib/pdf/quotation-report-pdf";
 
 const typeConfig: Record<
   DocumentType,
@@ -66,6 +69,37 @@ const approvalStatusStyles: Record<string, string> = {
 
 type ViewMode = "grid" | "list";
 
+type QuotationMaterialItem = {
+  description: string;
+  qty: number;
+  amt: number;
+  total: number;
+};
+
+type QuotationPayload = {
+  clientName?: string;
+  location?: string;
+  clientNumber?: string;
+  technician?: string;
+  materials?: string;
+  materialItems?: QuotationMaterialItem[];
+};
+
+function parseQuotationPayload(desc: string): QuotationPayload | null {
+  try {
+    const parsed = JSON.parse(desc) as Record<string, unknown>;
+    if (typeof parsed.clientName !== "string") return null;
+    return parsed as QuotationPayload;
+  } catch {
+    return null;
+  }
+}
+
+function clientQuotationRef(doc: Document): string | null {
+  if (doc.linkedReportType !== "quotation" || !doc.reportId) return null;
+  return formatQuotationNumberFromReportId(doc.reportId);
+}
+
 export default function DocumentsPage() {
   const [documents, setDocuments] = useState<Document[]>([]);
   useEffect(() => {
@@ -89,12 +123,16 @@ export default function DocumentsPage() {
   const [approveTarget, setApproveTarget] = useState<Document | null>(null);
   const [rejectTarget, setRejectTarget] = useState<Document | null>(null);
   const [viewTarget, setViewTarget] = useState<Document | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Document | null>(null);
 
   const filtered = useMemo(() => {
+    const q = search.toLowerCase();
     return documents.filter((d) => {
+      const ref = clientQuotationRef(d);
       const matchSearch =
-        d.title.toLowerCase().includes(search.toLowerCase()) ||
-        (d.projectName ?? "").toLowerCase().includes(search.toLowerCase());
+        d.title.toLowerCase().includes(q) ||
+        (d.projectName ?? "").toLowerCase().includes(q) ||
+        (ref != null && ref.toLowerCase().includes(q));
       const matchType = typeFilter === "all" || d.type === typeFilter;
       return matchSearch && matchType;
     });
@@ -120,11 +158,8 @@ export default function DocumentsPage() {
         toast.error("Failed to approve document.");
         return;
       }
-      setDocuments((prev) =>
-        prev.map((d) =>
-          d.id === approveTarget.id ? { ...d, approvalStatus: "approved" as const } : d
-        )
-      );
+      const updated = (await res.json()) as Document;
+      setDocuments((prev) => prev.map((d) => (d.id === updated.id ? updated : d)));
       setApproveTarget(null);
       toast.success("Document approved successfully!");
     } catch {
@@ -144,15 +179,128 @@ export default function DocumentsPage() {
         toast.error("Failed to reject document.");
         return;
       }
-      setDocuments((prev) =>
-        prev.map((d) =>
-          d.id === rejectTarget.id ? { ...d, approvalStatus: "rejected" as const } : d
-        )
-      );
+      const updated = (await res.json()) as Document;
+      setDocuments((prev) => prev.map((d) => (d.id === updated.id ? updated : d)));
       setRejectTarget(null);
       toast.success("Document rejected.");
     } catch {
       toast.error("Failed to reject document.");
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    try {
+      const res = await fetch(`/api/client/documents/${deleteTarget.id}`, {
+        method: "DELETE",
+      });
+      if (!res.ok) {
+        const data = (await res.json()) as { error?: string };
+        toast.error(data.error ?? "Failed to delete document.");
+        return;
+      }
+      setDocuments((prev) => prev.filter((d) => d.id !== deleteTarget.id));
+      if (viewTarget?.id === deleteTarget.id) setViewTarget(null);
+      setDeleteTarget(null);
+      toast.success("Document deleted.");
+    } catch {
+      toast.error("Failed to delete document.");
+    }
+  };
+
+  const handleDownload = async (doc: Document) => {
+    try {
+      const response = await fetch(`/api/client/documents/${doc.id}/report`, {
+        cache: "no-store",
+      });
+      if (!response.ok) {
+        const payload = (await response.json()) as { error?: string };
+        toast.error(payload.error ?? "Failed to load report.");
+        return;
+      }
+      const report = (await response.json()) as Report;
+      if (report.type === "quotation") {
+        const q = parseQuotationPayload(report.description);
+        if (!q) {
+          toast.error("Quotation data is incomplete.");
+          return;
+        }
+        const materialItems =
+          Array.isArray(q.materialItems) && q.materialItems.length > 0
+            ? q.materialItems
+            : (q.materials ?? "")
+                .split("\n")
+                .map((entry) => entry.trim())
+                .filter(Boolean)
+                .map((entry) => ({
+                  description: entry,
+                  qty: 1,
+                  amt: 0,
+                  total: 0,
+                }));
+        await downloadQuotationReportPdf({
+          reportId: report.id,
+          submittedAt: report.submittedAt,
+          submittedBy: report.submittedBy,
+          amount: report.amount,
+          clientName: q.clientName,
+          location: q.location,
+          clientNumber: q.clientNumber,
+          technician: q.technician || report.submittedBy,
+          materialItems,
+          dpPercent: 50,
+        });
+      } else {
+        const { jsPDF } = await import("jspdf");
+        const pdf = new jsPDF({ unit: "mm", format: "a4" });
+        pdf.setFont("helvetica", "bold");
+        pdf.setFontSize(15);
+        pdf.text("GreenSky Solar - Report", 14, 18);
+        pdf.setLineWidth(0.3);
+        pdf.line(14, 23, 196, 23);
+        pdf.setFontSize(10.5);
+        pdf.setFont("helvetica", "bold");
+        pdf.text("Title:", 14, 33);
+        pdf.setFont("helvetica", "normal");
+        pdf.text(report.title, 48, 33);
+        pdf.setFont("helvetica", "bold");
+        pdf.text("Type:", 14, 40);
+        pdf.setFont("helvetica", "normal");
+        pdf.text(report.type, 48, 40);
+        pdf.setFont("helvetica", "bold");
+        pdf.text("Status:", 14, 47);
+        pdf.setFont("helvetica", "normal");
+        pdf.text(report.status, 48, 47);
+        pdf.setFont("helvetica", "bold");
+        pdf.text("Submitted By:", 14, 54);
+        pdf.setFont("helvetica", "normal");
+        pdf.text(report.submittedBy, 48, 54);
+        pdf.setFont("helvetica", "bold");
+        pdf.text("Submitted Date:", 14, 61);
+        pdf.setFont("helvetica", "normal");
+        pdf.text(formatDate(report.submittedAt), 48, 61);
+        pdf.setFont("helvetica", "bold");
+        pdf.text("Amount:", 14, 68);
+        pdf.setFont("helvetica", "normal");
+        pdf.text(
+          report.amount != null ? formatCurrency(report.amount) : "-",
+          48,
+          68
+        );
+        pdf.setFont("helvetica", "bold");
+        pdf.text("Description:", 14, 78);
+        pdf.setFont("helvetica", "normal");
+        const lines = pdf.splitTextToSize(report.description || "-", 182);
+        pdf.text(lines, 14, 84);
+        const safeTitle = report.title.replace(/[\\/:*?"<>|]/g, "").trim() || "Report";
+        pdf.save(`${safeTitle}.pdf`);
+      }
+    } catch (error) {
+      const message =
+        error instanceof Error && error.message
+          ? error.message
+          : "Failed to download PDF.";
+      toast.error(message);
     }
   };
 
@@ -230,6 +378,7 @@ export default function DocumentsPage() {
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {filtered.map((doc) => {
             const tc = typeConfig[doc.type];
+            const quotationRef = clientQuotationRef(doc);
             return (
               <div
                 key={doc.id}
@@ -258,6 +407,9 @@ export default function DocumentsPage() {
                 <h3 className="mt-3 text-sm font-semibold text-slate-900 line-clamp-2 group-hover:text-brand transition-colors">
                   {doc.title}
                 </h3>
+                {quotationRef && (
+                  <p className="mt-1 text-xs font-semibold tracking-wide text-brand">{quotationRef}</p>
+                )}
 
                 <div className="mt-2 space-y-1">
                   {doc.projectName && (
@@ -300,9 +452,21 @@ export default function DocumentsPage() {
                       <Eye className="h-3.5 w-3.5" />
                       View
                     </button>
-                    <button className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-slate-200 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 transition-colors">
+                    <button
+                      onClick={() => {
+                        void handleDownload(doc);
+                      }}
+                      className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-slate-200 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 transition-colors"
+                    >
                       <Download className="h-3.5 w-3.5" />
                       Download
+                    </button>
+                    <button
+                      onClick={() => setDeleteTarget(doc)}
+                      className="flex items-center justify-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-600 hover:bg-red-100 transition-colors"
+                      title="Delete document"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
                     </button>
                   </div>
                 </div>
@@ -341,6 +505,7 @@ export default function DocumentsPage() {
             <tbody className="divide-y divide-slate-100">
               {filtered.map((doc) => {
                 const tc = typeConfig[doc.type];
+                const quotationRef = clientQuotationRef(doc);
                 return (
                   <tr key={doc.id} className="hover:bg-slate-50/60 transition-colors">
                     <td className="px-5 py-3.5">
@@ -348,9 +513,16 @@ export default function DocumentsPage() {
                         <div className={`flex h-8 w-8 items-center justify-center rounded-lg ${tc.bg}`}>
                           {tc.icon}
                         </div>
-                        <span className="text-sm font-medium text-slate-900 truncate max-w-[200px]">
-                          {doc.title}
-                        </span>
+                        <div className="min-w-0 max-w-[220px]">
+                          <span className="block text-sm font-medium text-slate-900 truncate">
+                            {doc.title}
+                          </span>
+                          {quotationRef && (
+                            <span className="mt-0.5 block text-xs font-semibold tracking-wide text-brand truncate">
+                              {quotationRef}
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </td>
                     <td className="px-5 py-3.5 hidden md:table-cell">
@@ -408,8 +580,20 @@ export default function DocumentsPage() {
                         >
                           <Eye className="h-3.5 w-3.5" />
                         </button>
-                        <button className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600">
+                        <button
+                          onClick={() => {
+                            void handleDownload(doc);
+                          }}
+                          className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                        >
                           <Download className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          onClick={() => setDeleteTarget(doc)}
+                          className="flex h-7 w-7 items-center justify-center rounded-lg text-red-500 hover:bg-red-50"
+                          title="Delete"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
                         </button>
                       </div>
                     </td>
@@ -438,7 +622,7 @@ export default function DocumentsPage() {
             <Button variant="outline" onClick={() => setApproveTarget(null)}>
               Cancel
             </Button>
-            <Button onClick={handleApprove} icon={Check}>
+            <Button onClick={handleApprove}>
               Approve
             </Button>
           </div>
@@ -452,63 +636,80 @@ export default function DocumentsPage() {
         title={viewTarget?.title ?? "Document Details"}
         size="md"
       >
-        {viewTarget && (
-          <div className="space-y-5">
-            <div className="flex items-start gap-4">
-              <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl ${typeConfig[viewTarget.type].bg}`}>
-                {typeConfig[viewTarget.type].icon}
-              </div>
-              <div className="min-w-0 flex-1">
-                <h3 className="text-base font-semibold text-slate-900">{viewTarget.title}</h3>
-                <p className="mt-0.5 text-sm text-slate-500">{typeConfig[viewTarget.type].label}</p>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  <span
-                    className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium capitalize ${docStatusStyles[viewTarget.status]}`}
+        {viewTarget &&
+          (() => {
+            const viewQuotationRef = clientQuotationRef(viewTarget);
+            return (
+              <div className="space-y-5">
+                <div className="flex items-start gap-4">
+                  <div
+                    className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl ${typeConfig[viewTarget.type].bg}`}
                   >
-                    {viewTarget.status}
-                  </span>
-                  {viewTarget.approvalStatus && (
-                    <span
-                      className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium capitalize ${approvalStatusStyles[viewTarget.approvalStatus]}`}
-                    >
-                      {viewTarget.approvalStatus}
-                    </span>
+                    {typeConfig[viewTarget.type].icon}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <h3 className="text-base font-semibold text-slate-900">{viewTarget.title}</h3>
+                    <p className="mt-0.5 text-sm text-slate-500">{typeConfig[viewTarget.type].label}</p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <span
+                        className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium capitalize ${docStatusStyles[viewTarget.status]}`}
+                      >
+                        {viewTarget.status}
+                      </span>
+                      {viewTarget.approvalStatus && (
+                        <span
+                          className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium capitalize ${approvalStatusStyles[viewTarget.approvalStatus]}`}
+                        >
+                          {viewTarget.approvalStatus}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-3 rounded-xl border border-slate-100 bg-slate-50/50 p-4">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-slate-500">Type</span>
+                    <span className="font-medium text-slate-900">{typeConfig[viewTarget.type].label}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-slate-500">File Size</span>
+                    <span className="font-medium text-slate-900">{viewTarget.fileSize}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-slate-500">Uploaded</span>
+                    <span className="font-medium text-slate-900">{formatDate(viewTarget.uploadedAt)}</span>
+                  </div>
+                  {viewTarget.projectName && (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-slate-500">Project</span>
+                      <span className="font-medium text-slate-900">{viewTarget.projectName}</span>
+                    </div>
+                  )}
+                  {viewQuotationRef && (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-slate-500">Quotation no.</span>
+                      <span className="font-medium text-slate-900">{viewQuotationRef}</span>
+                    </div>
                   )}
                 </div>
-              </div>
-            </div>
 
-            <div className="space-y-3 rounded-xl border border-slate-100 bg-slate-50/50 p-4">
-              <div className="flex justify-between text-sm">
-                <span className="text-slate-500">Type</span>
-                <span className="font-medium text-slate-900">{typeConfig[viewTarget.type].label}</span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-slate-500">File Size</span>
-                <span className="font-medium text-slate-900">{viewTarget.fileSize}</span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-slate-500">Uploaded</span>
-                <span className="font-medium text-slate-900">{formatDate(viewTarget.uploadedAt)}</span>
-              </div>
-              {viewTarget.projectName && (
-                <div className="flex justify-between text-sm">
-                  <span className="text-slate-500">Project</span>
-                  <span className="font-medium text-slate-900">{viewTarget.projectName}</span>
+                <div className="flex justify-end gap-2 pt-2">
+                  <Button variant="outline" onClick={() => setViewTarget(null)}>
+                    Close
+                  </Button>
+                  <Button
+                    icon={Download}
+                    onClick={() => {
+                      void handleDownload(viewTarget);
+                    }}
+                  >
+                    Download
+                  </Button>
                 </div>
-              )}
-            </div>
-
-            <div className="flex justify-end gap-2 pt-2">
-              <Button variant="outline" onClick={() => setViewTarget(null)}>
-                Close
-              </Button>
-              <Button icon={Download}>
-                Download
-              </Button>
-            </div>
-          </div>
-        )}
+              </div>
+            );
+          })()}
       </Modal>
 
       {/* Reject Confirmation Modal */}
@@ -528,8 +729,33 @@ export default function DocumentsPage() {
             <Button variant="outline" onClick={() => setRejectTarget(null)}>
               Cancel
             </Button>
-            <Button variant="danger" onClick={handleReject} icon={X}>
+            <Button variant="danger" onClick={handleReject}>
               Reject
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Delete Confirmation Modal */}
+      <Modal
+        isOpen={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        title="Delete Document"
+        size="sm"
+        zIndex={60}
+      >
+        <div className="flex flex-col gap-4">
+          <p className="text-sm leading-relaxed text-slate-600">
+            Are you sure you want to delete{" "}
+            <span className="font-semibold text-slate-900">{deleteTarget?.title}</span>? This action
+            cannot be undone.
+          </p>
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button variant="outline" onClick={() => setDeleteTarget(null)}>
+              Cancel
+            </Button>
+            <Button variant="danger" onClick={handleDelete}>
+              Delete
             </Button>
           </div>
         </div>

@@ -18,18 +18,24 @@ const createBookingTimeSchema = z.string().min(1, "Time is required").refine(
   "Invalid time format (e.g. 09:00 or 09:00 AM)"
 );
 
-export const createBookingSchema = z.object({
-  serviceType,
-  date: dateStringSchema,
-  time: createBookingTimeSchema,
-  address: z.string().min(1, "Address is required").max(500).trim(),
-  notes: optionalString,
-  technician: z.string().optional(),
-  amount: nonNegativeNumber,
-  lat: z.number().optional(),
-  lng: z.number().optional(),
-  addressId: z.string().optional(),
-});
+export const createBookingSchema = z
+  .object({
+    serviceType,
+    date: dateStringSchema,
+    endDate: dateStringSchema.optional(),
+    time: createBookingTimeSchema,
+    address: z.string().min(1, "Address is required").max(500).trim(),
+    notes: optionalString,
+    technician: z.string().optional(),
+    amount: nonNegativeNumber,
+    lat: z.number().optional(),
+    lng: z.number().optional(),
+    addressId: z.string().optional(),
+  })
+  .refine((data) => !data.endDate || data.endDate >= data.date, {
+    message: "End date must be on or after start date",
+    path: ["endDate"],
+  });
 
 /** Accepts HH:MM, H:MM, or "HH:MM AM/PM" (e.g. 09:00, 9:00, 09:00 AM, 01:00 PM) */
 const timeFormat = z.string().refine(
@@ -40,6 +46,7 @@ const timeFormat = z.string().refine(
 export const updateBookingSchema = z.object({
   serviceType: serviceType.optional(),
   date: dateStringSchema.optional(),
+  endDate: dateStringSchema.optional().nullable(),
   time: timeFormat.optional(),
   status: bookingStatus.optional(),
   technician: z.string().optional(),

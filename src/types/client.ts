@@ -15,8 +15,13 @@ export type DocumentType = "contract" | "invoice" | "warranty" | "permit" | "rep
 export interface Booking {
   id: string;
   referenceNo: string;
+  clientName?: string;
+  clientContactNumber?: string;
   serviceType: ServiceType;
+  /** Service window start (YYYY-MM-DD). */
   date: string;
+  /** Service window end; omit or same as `date` for a single day. */
+  endDate?: string;
   time: string;
   status: BookingStatus;
   technician: string;
@@ -24,6 +29,7 @@ export interface Booking {
   address: string;
   notes: string;
   amount: number;
+  userId?: string;
   lat?: number;
   lng?: number;
   addressId?: string;
@@ -119,4 +125,7 @@ export interface Document {
   projectName?: string;
   status: "active" | "expired" | "draft";
   approvalStatus?: DocumentApprovalStatus;
+  reportId?: string;
+  /** Linked report row type when this document was created from a report (e.g. sent quotation). */
+  linkedReportType?: "service" | "quotation" | "revenue";
 }

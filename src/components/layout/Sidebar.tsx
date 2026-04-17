@@ -3,39 +3,13 @@
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
-import {
-  LayoutDashboard,
-  FolderKanban,
-  ShieldCheck,
-  Calendar,
-  ClipboardList,
-  Users,
-  UserCog,
-  FileBarChart,
-  Package,
-  Receipt,
-  Bell,
-  PanelLeftClose,
-} from "lucide-react";
+import { PanelLeftClose } from "lucide-react";
 import {
   getDisplayName,
   getInitials,
   useSessionUser,
 } from "@/lib/client-session";
-
-const navItems = [
-  { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-  { label: "Bookings", href: "/bookings", icon: ClipboardList },
-  { label: "Projects", href: "/projects", icon: FolderKanban },
-  { label: "Calendar", href: "/calendar", icon: Calendar },
-  { label: "After Sales", href: "/after-sales", icon: ShieldCheck },
-  { label: "Technicians", href: "/technicians", icon: Users },
-  { label: "Inventory", href: "/inventory", icon: Package },
-  { label: "Invoice", href: "/invoice", icon: Receipt },
-  { label: "Reports", href: "/reports", icon: FileBarChart },
-  { label: "Notifications", href: "/notifications", icon: Bell },
-  { label: "User Management", href: "/users", icon: UserCog },
-];
+import { navItems } from "@/lib/nav-items";
 
 type SidebarProps = {
   collapsed?: boolean;

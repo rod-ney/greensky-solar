@@ -247,6 +247,7 @@ export async function createProjectInDb(data: {
   priority: Project["priority"];
   description: string;
   projectLead?: string;
+  assignedTechnicians?: string[];
   bookingId?: string;
   userId?: string;
 }): Promise<Project> {
@@ -257,6 +258,7 @@ export async function createProjectInDb(data: {
   if (!bookingId && data.userId) {
     const solarBooking = await createSolarInstallationBookingInDb({
       date: data.startDate,
+      endDate: data.endDate,
       time: "09:00",
       address: data.location,
       notes: data.description || `Solar installation - ${data.name}`,
@@ -288,14 +290,17 @@ export async function createProjectInDb(data: {
     ]
   );
 
-  if (data.projectLead) {
+  const technicianIds = Array.from(
+    new Set([...(data.assignedTechnicians ?? []), ...(data.projectLead ? [data.projectLead] : [])])
+  ).filter(Boolean);
+  for (const technicianId of technicianIds) {
     await dbQuery(
       `
         INSERT INTO project_technicians (project_id, technician_id)
         VALUES ($1, $2)
         ON CONFLICT (project_id, technician_id) DO NOTHING
       `,
-      [nextId, data.projectLead]
+      [nextId, technicianId]
     );
   }
 

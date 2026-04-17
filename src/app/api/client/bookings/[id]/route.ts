@@ -39,6 +39,7 @@ export async function PATCH(request: Request, context: RouteContext) {
     const updated = await updateClientBookingInDb(id, {
       serviceType: body.serviceType,
       date: body.date,
+      endDate: body.endDate,
       time: body.time,
       status: body.status,
       technician: body.technician,

@@ -14,6 +14,7 @@ import {
   Clock,
   MessageSquare,
   Plus,
+  Trash2,
 } from "lucide-react";
 import { formatDate } from "@/lib/format";
 import { getTodayInManila } from "@/lib/date-utils";
@@ -84,6 +85,8 @@ export default function AfterSalesPage() {
   const [addDescription, setAddDescription] = useState("");
   const [addProjectId, setAddProjectId] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<SupportTicket | null>(null);
+  const [isDeletingTicket, setIsDeletingTicket] = useState(false);
 
   useEffect(() => {
     const load = async () => {
@@ -289,6 +292,14 @@ export default function AfterSalesPage() {
                         Resolved
                       </button>
                     )}
+                    <button
+                      type="button"
+                      onClick={() => setDeleteTarget(ticket)}
+                      className="flex h-7 w-7 items-center justify-center rounded-lg text-red-500 hover:bg-red-50 transition-colors"
+                      title="Delete ticket"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
                     {ticket.projectId && (
                       <Link
                         href={`/projects/${ticket.projectId}`}
@@ -414,6 +425,63 @@ export default function AfterSalesPage() {
           </tbody>
         </table>
       </div>
+
+      {/* Delete ticket confirmation */}
+      <Modal
+        isOpen={!!deleteTarget}
+        onClose={() => {
+          if (!isDeletingTicket) setDeleteTarget(null);
+        }}
+        title="Delete ticket"
+        size="sm"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-slate-600">
+            Delete this ticket permanently?{" "}
+            {deleteTarget && (
+              <span className="font-semibold text-slate-900">{deleteTarget.subject}</span>
+            )}
+          </p>
+          <div className="flex justify-end gap-2">
+            <Button
+              variant="outline"
+              type="button"
+              onClick={() => setDeleteTarget(null)}
+              disabled={isDeletingTicket}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="danger"
+              type="button"
+              disabled={isDeletingTicket}
+              onClick={async () => {
+                if (!deleteTarget) return;
+                setIsDeletingTicket(true);
+                try {
+                  const res = await fetch(`/api/after-sales/tickets/${deleteTarget.id}`, {
+                    method: "DELETE",
+                  });
+                  if (!res.ok) {
+                    const data = (await res.json()) as { error?: string };
+                    toast.error(data.error ?? "Failed to delete ticket.");
+                    return;
+                  }
+                  setTickets((prev) => prev.filter((t) => t.id !== deleteTarget.id));
+                  setDeleteTarget(null);
+                  toast.success("Ticket deleted.");
+                } catch {
+                  toast.error("Failed to delete ticket.");
+                } finally {
+                  setIsDeletingTicket(false);
+                }
+              }}
+            >
+              {isDeletingTicket ? "Deleting…" : "Delete"}
+            </Button>
+          </div>
+        </div>
+      </Modal>
 
       {/* Add Ticket Modal */}
       <Modal

@@ -40,6 +40,7 @@ export async function POST(request: Request) {
     const created = await createClientBookingInDb({
       serviceType: body.serviceType,
       date: body.date,
+      endDate: body.endDate,
       time: body.time,
       address: body.address,
       notes: body.notes,

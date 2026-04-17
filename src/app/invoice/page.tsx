@@ -5,7 +5,7 @@ import { Receipt, Plus, Search, Clock, CheckCircle2, AlertTriangle, RotateCcw, E
 import Button from "@/components/ui/Button";
 import Modal from "@/components/ui/Modal";
 import { getTodayInManila } from "@/lib/date-utils";
-import { formatCurrency, formatDate } from "@/lib/format";
+import { formatCurrencyDecimal, formatDate } from "@/lib/format";
 import { toast } from "@/lib/toast";
 import type { Payment } from "@/types/client";
 
@@ -24,6 +24,16 @@ const DEFAULT_PAYMENT_INSTRUCTIONS = `You may pay through any of the following m
 • Cash – Pay at our office
 • GCash – Send to [GCash number]
 • Credit Card – Accepted at office`;
+
+/** Allow only digits and a single decimal point (no minus, no scientific notation). */
+function sanitizeInvoiceAmountInput(raw: string): string {
+  const cleaned = raw.replace(/[^\d.]/g, "");
+  const firstDot = cleaned.indexOf(".");
+  if (firstDot === -1) return cleaned;
+  const intPart = cleaned.slice(0, firstDot);
+  const fracPart = cleaned.slice(firstDot + 1).replace(/\./g, "");
+  return intPart + "." + fracPart;
+}
 
 const statusConfig: Record<string, { bg: string; text: string; icon: React.ReactNode; label: string }> = {
   paid: { bg: "bg-green-50 border-green-200", text: "text-green-700", icon: <CheckCircle2 className="h-3.5 w-3.5" />, label: "Paid" },
@@ -95,6 +105,11 @@ export default function InvoicePage() {
     }
     if (!clientUserId) {
       toast.error("Please select a client to send the invoice to.");
+      return;
+    }
+    const today = getTodayInManila();
+    if (dueDate < today) {
+      toast.error("Due date cannot be in the past.");
       return;
     }
     setIsSubmitting(true);
@@ -294,7 +309,7 @@ export default function InvoicePage() {
                           {inv.serviceType ?? inv.description}
                         </td>
                         <td className="px-5 py-3.5 text-sm font-medium text-slate-900">
-                          {formatCurrency(inv.amount)}
+                          {formatCurrencyDecimal(inv.amount)}
                         </td>
                         <td className="px-5 py-3.5 text-sm text-slate-500">
                           {inv.dueDate ? formatDate(inv.dueDate) : "—"}
@@ -390,11 +405,16 @@ export default function InvoicePage() {
               Amount to Pay (PHP) <span className="text-red-500">*</span>
             </label>
             <input
-              type="number"
-              min="0"
-              step="0.01"
+              type="text"
+              inputMode="decimal"
+              autoComplete="off"
               value={amount}
-              onChange={(e) => setAmount(e.target.value)}
+              onChange={(e) => setAmount(sanitizeInvoiceAmountInput(e.target.value))}
+              onKeyDown={(e) => {
+                if (e.key === "-" || e.key === "+" || e.key === "e" || e.key === "E") {
+                  e.preventDefault();
+                }
+              }}
               placeholder="0.00"
               className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand"
               required
@@ -407,8 +427,17 @@ export default function InvoicePage() {
             </label>
             <input
               type="date"
+              min={getTodayInManila()}
               value={dueDate}
-              onChange={(e) => setDueDate(e.target.value)}
+              onChange={(e) => {
+                const v = e.target.value;
+                const min = getTodayInManila();
+                if (v && v < min) {
+                  toast.error("Due date cannot be in the past.");
+                  return;
+                }
+                setDueDate(v);
+              }}
               className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand"
               required
             />

@@ -5,8 +5,11 @@ import type { Booking } from "@/types/client";
 type BookingRow = {
   id: string;
   reference_no: string;
+  client_name?: string | null;
+  client_contact_number?: string | null;
   service_type: Booking["serviceType"];
   date: string | Date;
+  end_date?: string | Date | null;
   time: string;
   status: Booking["status"];
   technician: string;
@@ -15,6 +18,7 @@ type BookingRow = {
   address: string;
   notes: string;
   amount: string | number;
+  user_id?: string | null;
   lat?: string | number | null;
   lng?: string | number | null;
   addr_lat?: string | number | null;
@@ -30,8 +34,11 @@ function mapBooking(row: BookingRow): Booking {
   return {
     id: row.id,
     referenceNo: row.reference_no,
+    clientName: row.client_name ?? undefined,
+    clientContactNumber: row.client_contact_number ?? undefined,
     serviceType: row.service_type,
     date: toIsoDateManila(row.date),
+    endDate: row.end_date ? toIsoDateManila(row.end_date) : undefined,
     time: row.time,
     status: row.status,
     technician: row.technician,
@@ -39,6 +46,7 @@ function mapBooking(row: BookingRow): Booking {
     address: row.address,
     notes: row.notes,
     amount: Number(row.amount),
+    userId: row.user_id ?? undefined,
     lat,
     lng,
     projectId: row.project_id ?? undefined,
@@ -48,7 +56,16 @@ function mapBooking(row: BookingRow): Booking {
 export async function listClientBookingsFromDb(userId?: string | null): Promise<Booking[]> {
   const query = userId
     ? `
-      SELECT b.id, b.reference_no, b.service_type, b.date, b.time, b.status, b.technician, b.address, b.notes, b.amount, b.lat, b.lng,
+      SELECT b.id, b.reference_no, b.service_type, b.date, b.end_date, b.time, b.status, b.technician, b.address, b.notes, b.amount, b.lat, b.lng,
+             COALESCE(
+               (SELECT u.name FROM users u WHERE u.id = b.user_id LIMIT 1),
+               (SELECT u2.name FROM projects p2 JOIN users u2 ON u2.id = p2.user_id WHERE p2.booking_id = b.id LIMIT 1)
+             ) AS client_name,
+             COALESCE(
+               (SELECT u.contact_number FROM users u WHERE u.id = b.user_id LIMIT 1),
+               (SELECT u2.contact_number FROM projects p2 JOIN users u2 ON u2.id = p2.user_id WHERE p2.booking_id = b.id LIMIT 1)
+             ) AS client_contact_number,
+             b.user_id,
              sa.lat AS addr_lat, sa.lng AS addr_lng,
              (SELECT t.name FROM projects p
               JOIN technicians t ON p.project_lead = t.id
@@ -66,7 +83,16 @@ export async function listClientBookingsFromDb(userId?: string | null): Promise<
       ORDER BY b.date DESC, b.time DESC
     `
     : `
-      SELECT b.id, b.reference_no, b.service_type, b.date, b.time, b.status, b.technician, b.address, b.notes, b.amount, b.lat, b.lng,
+      SELECT b.id, b.reference_no, b.service_type, b.date, b.end_date, b.time, b.status, b.technician, b.address, b.notes, b.amount, b.lat, b.lng,
+             COALESCE(
+               (SELECT u.name FROM users u WHERE u.id = b.user_id LIMIT 1),
+               (SELECT u2.name FROM projects p2 JOIN users u2 ON u2.id = p2.user_id WHERE p2.booking_id = b.id LIMIT 1)
+             ) AS client_name,
+             COALESCE(
+               (SELECT u.contact_number FROM users u WHERE u.id = b.user_id LIMIT 1),
+               (SELECT u2.contact_number FROM projects p2 JOIN users u2 ON u2.id = p2.user_id WHERE p2.booking_id = b.id LIMIT 1)
+             ) AS client_contact_number,
+             b.user_id,
              sa.lat AS addr_lat, sa.lng AS addr_lng,
              (SELECT t.name FROM projects p
               JOIN technicians t ON p.project_lead = t.id
@@ -88,6 +114,7 @@ export async function listClientBookingsFromDb(userId?: string | null): Promise<
 export async function createClientBookingInDb(data: {
   serviceType: Booking["serviceType"];
   date: string;
+  endDate?: string | null;
   time: string;
   address: string;
   notes: string;
@@ -108,15 +135,16 @@ export async function createClientBookingInDb(data: {
 
   const result = await dbQuery<BookingRow>(
     `INSERT INTO bookings
-      (id, reference_no, service_type, date, time, status, technician, address, notes, amount, user_id, lat, lng, address_id)
+      (id, reference_no, service_type, date, end_date, time, status, technician, address, notes, amount, user_id, lat, lng, address_id)
      VALUES
-      ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
-     RETURNING id, reference_no, service_type, date, time, status, technician, address, notes, amount, lat, lng`,
+      ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+     RETURNING id, reference_no, service_type, date, end_date, time, status, technician, address, notes, amount, lat, lng`,
     [
       nextId,
       referenceNo,
       data.serviceType,
       data.date,
+      data.endDate ?? null,
       data.time,
       data.status ?? "pending",
       data.technician ?? "Unassigned",
@@ -135,6 +163,7 @@ export async function createClientBookingInDb(data: {
 
 export async function createSolarInstallationBookingInDb(data: {
   date: string;
+  endDate?: string;
   time: string;
   address: string;
   notes: string;
@@ -145,6 +174,7 @@ export async function createSolarInstallationBookingInDb(data: {
   return createClientBookingInDb({
     serviceType: "solar_panel_installation",
     date: data.date,
+    endDate: data.endDate,
     time: data.time,
     address: data.address,
     notes: data.notes,
@@ -160,6 +190,7 @@ export async function updateClientBookingInDb(
   data: {
     serviceType?: Booking["serviceType"];
     date?: string;
+    endDate?: string | null;
     time?: string;
     status?: Booking["status"];
     technician?: string;
@@ -178,6 +209,7 @@ export async function updateClientBookingInDb(
     id,
     data.serviceType ?? null,
     data.date ?? null,
+    data.endDate ?? null,
     data.time ?? null,
     data.status ?? null,
     data.technician ?? null,
@@ -185,7 +217,7 @@ export async function updateClientBookingInDb(
     data.notes ?? null,
     typeof data.amount === "number" ? data.amount : null,
   ];
-  let paramIdx = 10;
+  let paramIdx = 11;
   const latClause = latProvided ? `$${paramIdx++}` : "lat";
   const lngClause = lngProvided ? `$${paramIdx++}` : "lng";
   const addressIdClause = addressIdProvided ? `$${paramIdx}` : "address_id";
@@ -198,17 +230,18 @@ export async function updateClientBookingInDb(
      SET
        service_type = COALESCE($2, service_type),
        date = COALESCE($3::date, date),
-       time = COALESCE($4, time),
-       status = COALESCE($5, status),
-       technician = COALESCE($6, technician),
-       address = COALESCE($7, address),
-       notes = COALESCE($8, notes),
-       amount = COALESCE($9, amount),
+       end_date = COALESCE($4::date, end_date),
+       time = COALESCE($5, time),
+       status = COALESCE($6, status),
+       technician = COALESCE($7, technician),
+       address = COALESCE($8, address),
+       notes = COALESCE($9, notes),
+       amount = COALESCE($10, amount),
        lat = ${latClause},
        lng = ${lngClause},
        address_id = ${addressIdClause}
      WHERE id = $1
-     RETURNING id, reference_no, service_type, date, time, status, technician, address, notes, amount, lat, lng`,
+     RETURNING id, reference_no, service_type, date, end_date, time, status, technician, address, notes, amount, lat, lng`,
     params
   );
 

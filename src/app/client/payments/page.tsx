@@ -17,7 +17,7 @@ import {
   Banknote,
   X,
 } from "lucide-react";
-import { formatCurrency, formatDate } from "@/lib/format";
+import { formatCurrencyDecimal, formatDate } from "@/lib/format";
 import type { Payment, PaymentStatus, PaymentMethod } from "@/types/client";
 
 const statusConfig: Record<PaymentStatus, { bg: string; text: string; icon: React.ReactNode; label: string }> = {
@@ -91,7 +91,7 @@ export default function PaymentsPage() {
             <div>
               <p className="text-xs text-slate-500">Total Paid</p>
               <p className="text-lg font-bold text-slate-900">
-                {formatCurrency(totalPaid)}
+                {formatCurrencyDecimal(totalPaid)}
               </p>
             </div>
           </div>
@@ -104,7 +104,7 @@ export default function PaymentsPage() {
             <div>
               <p className="text-xs text-slate-500">Pending</p>
               <p className="text-lg font-bold text-amber-600">
-                {formatCurrency(totalPending)}
+                {formatCurrencyDecimal(totalPending)}
               </p>
             </div>
           </div>
@@ -117,7 +117,7 @@ export default function PaymentsPage() {
             <div>
               <p className="text-xs text-slate-500">Overdue</p>
               <p className="text-lg font-bold text-red-600">
-                {formatCurrency(totalOverdue)}
+                {formatCurrencyDecimal(totalOverdue)}
               </p>
             </div>
           </div>
@@ -200,7 +200,7 @@ export default function PaymentsPage() {
                             pay.status === "refunded" ? "text-slate-400 line-through" : "text-slate-900"
                           }`}
                         >
-                          {formatCurrency(pay.amount)}
+                          {formatCurrencyDecimal(pay.amount)}
                         </p>
                       </div>
                     </div>
@@ -253,7 +253,7 @@ export default function PaymentsPage() {
                 <div className="rounded-xl bg-slate-50 p-5 text-center">
                   <p className="text-xs text-slate-500">Amount</p>
                   <p className={`mt-1 text-3xl font-bold ${detail.status === "refunded" ? "text-slate-400 line-through" : "text-slate-900"}`}>
-                    {formatCurrency(detail.amount)}
+                    {formatCurrencyDecimal(detail.amount)}
                   </p>
                   <div className="mt-2">
                     <span className={`inline-flex items-center gap-1 rounded-full border px-3 py-1 text-xs font-medium ${statusConfig[detail.status].bg} ${statusConfig[detail.status].text}`}>

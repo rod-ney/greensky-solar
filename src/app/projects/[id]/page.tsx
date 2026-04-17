@@ -9,7 +9,7 @@ import {
   Calendar,
   MapPin,
   Users,
-  DollarSign,
+  PhilippinePeso,
   Edit2,
   Trash2,
   CheckCircle2,
@@ -31,7 +31,7 @@ import StatusBadge from "@/components/ui/StatusBadge";
 import ProgressBar from "@/components/ui/ProgressBar";
 import Modal from "@/components/ui/Modal";
 import ConfirmModal from "@/components/ui/ConfirmModal";
-import { formatCurrency, formatDate } from "@/lib/format";
+import { formatCurrency, formatCurrencyDecimal, formatDate } from "@/lib/format";
 import { getTodayInManila } from "@/lib/date-utils";
 import { toast } from "@/lib/toast";
 import type { Task, TaskStatus, Priority, ProjectStatus, Project, Technician, InventoryItem, ProjectInventoryItem } from "@/types";
@@ -214,6 +214,12 @@ export default function ProjectDetailPage() {
     return { start: min, end: max, totalDays: Math.ceil((max - min) / (24 * 60 * 60 * 1000)) || 1 };
   }, [filteredTasks, project?.startDate, project?.endDate, projectData?.startDate, projectData?.endDate]);
 
+  const ganttCanvasWidth = useMemo(() => {
+    const pixelsPerDay = ganttScale === "month" ? 10 : 16;
+    const computed = timelineRange.totalDays * pixelsPerDay;
+    return Math.min(2200, Math.max(900, computed));
+  }, [ganttScale, timelineRange.totalDays]);
+
   const getTaskBarPosition = useCallback(
     (task: Task) => {
       const start = new Date(task.createdAt).getTime();
@@ -228,10 +234,11 @@ export default function ProjectDetailPage() {
   const formatAxisDate = (ts: number) =>
     new Date(ts).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "2-digit" });
 
-  // ---- Gantt scale: week/month markers ----
-  const ganttMarkers = useMemo(() => {
+  // ---- Gantt scale headers: primary (month/week) + secondary (day) ----
+  const ganttHeaders = useMemo(() => {
     const { start, end } = timelineRange;
-    const markers: { label: string; left: number; width: number }[] = [];
+    const primary: { label: string; left: number; width: number }[] = [];
+    const secondary: { label: string; left: number; width: number }[] = [];
     const startDate = new Date(start);
     const endDate = new Date(end);
     const total = end - start;
@@ -243,11 +250,26 @@ export default function ProjectDetailPage() {
         d = new Date(d.getFullYear(), d.getMonth() + 1, 0);
         const monthEnd = Math.min(d.getTime() + 86400000, end);
         d = new Date(d.getTime() + 86400000);
-        markers.push({
+        primary.push({
           label: new Date(monthStart).toLocaleDateString("en-US", { month: "short", year: "2-digit" }),
           left: ((monthStart - start) / total) * 100,
           width: ((monthEnd - monthStart) / total) * 100,
         });
+      }
+
+      const dayCursor = new Date(startDate);
+      dayCursor.setHours(0, 0, 0, 0);
+      while (dayCursor.getTime() < endDate.getTime()) {
+        const dayStart = dayCursor.getTime();
+        const dayEnd = Math.min(dayStart + 86400000, end);
+        const dayNumber = new Date(dayStart).getDate();
+        const shouldShowDayLabel = dayNumber === 1 || dayNumber % 3 === 0;
+        secondary.push({
+          label: shouldShowDayLabel ? String(dayNumber) : "",
+          left: ((dayStart - start) / total) * 100,
+          width: ((dayEnd - dayStart) / total) * 100,
+        });
+        dayCursor.setDate(dayCursor.getDate() + 1);
       }
     } else {
       const d = new Date(startDate);
@@ -255,15 +277,26 @@ export default function ProjectDetailPage() {
       while (d.getTime() < endDate.getTime()) {
         const weekStart = d.getTime();
         const weekEnd = Math.min(weekStart + 7 * 86400000, end);
-        markers.push({
+        primary.push({
           label: new Date(weekStart).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
           left: ((weekStart - start) / total) * 100,
           width: ((weekEnd - weekStart) / total) * 100,
         });
+        for (let i = 0; i < 7; i++) {
+          const dayStart = weekStart + i * 86400000;
+          if (dayStart >= end) break;
+          const dayEnd = Math.min(dayStart + 86400000, end);
+          secondary.push({
+            label: new Date(dayStart).toLocaleDateString("en-US", { weekday: "short" }),
+            left: ((dayStart - start) / total) * 100,
+            width: ((dayEnd - dayStart) / total) * 100,
+          });
+        }
         d.setDate(d.getDate() + 7);
       }
     }
-    return markers;
+
+    return { primary, secondary };
   }, [timelineRange, ganttScale]);
 
   // ---- Calendar view: days grid + tasks per day ----
@@ -595,11 +628,11 @@ export default function ProjectDetailPage() {
           </div>
           <div className="rounded-lg bg-slate-50 p-3">
             <div className="flex items-center gap-2 text-xs text-slate-500">
-              <DollarSign className="h-3.5 w-3.5" />
+              <PhilippinePeso className="h-3.5 w-3.5" />
               Budget
             </div>
             <p className="mt-1 text-sm font-medium text-slate-900">
-              {formatCurrency(projectData?.budget ?? project.budget)}
+              {formatCurrencyDecimal(projectData?.budget ?? project.budget)}
             </p>
           </div>
           <div className="rounded-lg bg-slate-50 p-3">
@@ -770,7 +803,7 @@ export default function ProjectDetailPage() {
                 No tasks found. Add tasks to view the Gantt chart.
               </div>
             ) : (
-              <div className="min-w-[600px] p-5">
+              <div className="p-5" style={{ minWidth: `${ganttCanvasWidth + 180}px` }}>
                 {/* Gantt scale toggle + header */}
                 <div className="flex items-center justify-between mb-3">
                   <div className="flex rounded-lg border border-slate-200 bg-white">
@@ -797,11 +830,20 @@ export default function ProjectDetailPage() {
                 </div>
                 <div className="grid gap-2 mb-3" style={{ gridTemplateColumns: "180px 1fr" }}>
                   <div className="text-xs font-medium text-slate-500 uppercase tracking-wider">Task</div>
-                  <div className="relative h-6">
-                    {ganttMarkers.map((m, i) => (
+                  <div className="relative h-12 rounded border border-slate-200 bg-slate-50">
+                    {ganttHeaders.primary.map((m, i) => (
                       <div
-                        key={i}
-                        className="absolute top-0 bottom-0 flex items-center justify-center text-xs text-slate-500 border-r border-slate-200 last:border-r-0"
+                        key={`primary-${i}`}
+                        className="absolute top-0 flex h-6 items-center justify-center border-r border-slate-200 text-[11px] font-medium text-slate-600 last:border-r-0"
+                        style={{ left: `${m.left}%`, width: `${m.width}%` }}
+                      >
+                        {m.label}
+                      </div>
+                    ))}
+                    {ganttHeaders.secondary.map((m, i) => (
+                      <div
+                        key={`secondary-${i}`}
+                        className="absolute top-6 flex h-6 items-center justify-center border-r border-slate-200 text-[10px] text-slate-500 last:border-r-0"
                         style={{ left: `${m.left}%`, width: `${m.width}%` }}
                       >
                         {m.label}

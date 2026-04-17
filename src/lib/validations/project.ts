@@ -14,6 +14,7 @@ export const createProjectSchema = z.object({
   priority,
   description: z.string().max(5000).trim(),
   projectLead: optionalString,
+  assignedTechnicians: z.array(z.string()).optional(),
   bookingId: z.string().optional(),
   userId: z.string().optional(),
 });

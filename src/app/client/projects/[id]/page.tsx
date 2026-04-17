@@ -41,6 +41,7 @@ const taskStatusIcons: Record<ClientTaskStatus, React.ReactNode> = {
 type TaskView = "list" | "gantt" | "calendar";
 type GanttScale = "week" | "month";
 type TaskFilter = ClientTaskStatus | "all";
+type TimelineCategory = "day" | "status";
 
 export default function ClientProjectDetailPage() {
   const params = useParams();
@@ -54,6 +55,7 @@ export default function ClientProjectDetailPage() {
   // Task view state
   const [taskView, setTaskView] = useState<TaskView>("list");
   const [taskFilter, setTaskFilter] = useState<TaskFilter>("all");
+  const [timelineCategory, setTimelineCategory] = useState<TimelineCategory>("day");
   const [ganttScale, setGanttScale] = useState<GanttScale>("month");
   const [calendarMonth, setCalendarMonth] = useState(() => {
     const now = new Date();
@@ -100,6 +102,37 @@ export default function ClientProjectDetailPage() {
     }
     return counts;
   }, [project]);
+
+  const timelineDays = useMemo(() => {
+    const grouped = new Map<string, ClientTask[]>();
+    filteredTasks.forEach((task) => {
+      const dateKey = task.dueDate.slice(0, 10);
+      const bucket = grouped.get(dateKey) ?? [];
+      bucket.push(task);
+      grouped.set(dateKey, bucket);
+    });
+
+    return Array.from(grouped.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([dateKey, tasks], index) => ({
+        dateKey,
+        dayNumber: index + 1,
+        tasks: tasks.sort((a, b) => a.title.localeCompare(b.title)),
+      }));
+  }, [filteredTasks]);
+
+  const timelineByStatus = useMemo(() => {
+    const order: ClientTaskStatus[] = ["todo", "in_progress", "completed", "cancelled"];
+    return order
+      .map((status) => ({
+        status,
+        label: TASK_STATUS_LABELS[status],
+        tasks: filteredTasks
+          .filter((task) => task.status === status)
+          .sort((a, b) => a.dueDate.localeCompare(b.dueDate)),
+      }))
+      .filter((group) => group.tasks.length > 0);
+  }, [filteredTasks]);
 
   // ---- Gantt / Timeline date range ----
   const timelineRange = useMemo(() => {
@@ -609,36 +642,90 @@ export default function ClientProjectDetailPage() {
         )}
       </div>
 
-      {/* ====== Timeline (vertical progress indicator) — shown in list view only ====== */}
-      {taskView === "list" && project.tasks.length > 0 && (
+      {/* ====== Timeline (daily completion view) — shown in list view only ====== */}
+      {taskView === "list" && (timelineDays.length > 0 || timelineByStatus.length > 0) && (
         <div className="rounded-2xl border border-slate-200 bg-white p-5">
-          <h2 className="text-base font-semibold text-slate-900 mb-4">Timeline</h2>
-          <div className="relative pl-6">
-            <div className="absolute left-[11px] top-0 bottom-0 w-0.5 bg-slate-200" />
-            {project.tasks.map((task) => (
-              <div key={task.id} className="relative mb-6 last:mb-0">
-                <div
-                  className={`absolute left-[-17px] top-1 h-3 w-3 rounded-full border-2 ${
-                    task.status === "completed"
-                      ? "border-green-500 bg-green-500"
-                      : task.status === "in_progress"
-                      ? "border-blue-500 bg-blue-500"
-                      : task.status === "cancelled"
-                      ? "border-red-400 bg-red-400"
-                      : "border-slate-300 bg-white"
-                  }`}
-                />
-                <div>
-                  <div className="flex items-center gap-2">
-                    <p className="text-sm font-medium text-slate-900">{task.title}</p>
-                    <StatusBadge status={task.status} size="sm" />
-                  </div>
-                  <p className="text-xs text-slate-500 mt-0.5">
-                    Due: {formatDate(task.dueDate)} · Assigned to: {task.assignedToName}
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <h2 className="text-base font-semibold text-slate-900">Timeline</h2>
+            <div className="inline-flex rounded-lg border border-slate-200 bg-slate-50 p-1">
+              <button
+                onClick={() => setTimelineCategory("day")}
+                className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+                  timelineCategory === "day"
+                    ? "bg-white text-slate-900 shadow-sm"
+                    : "text-slate-600 hover:text-slate-900"
+                }`}
+              >
+                By Day
+              </button>
+              <button
+                onClick={() => setTimelineCategory("status")}
+                className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+                  timelineCategory === "status"
+                    ? "bg-white text-slate-900 shadow-sm"
+                    : "text-slate-600 hover:text-slate-900"
+                }`}
+              >
+                By Status
+              </button>
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            {timelineCategory === "day" &&
+              timelineDays.map((day) => (
+                <div key={day.dateKey} className="rounded-xl border border-slate-100 bg-slate-50/60 p-4">
+                  <p className="text-sm font-semibold text-slate-900">
+                    {new Date(`${day.dateKey}T00:00:00`).toLocaleDateString("en-US", {
+                      month: "long",
+                      day: "numeric",
+                    })}{" "}
+                    <span className="text-slate-500 font-medium">(Day {day.dayNumber})</span>
                   </p>
+                  <div className="mt-3 space-y-2">
+                    {day.tasks.map((task, taskIndex) => (
+                      <div
+                        key={`${day.dateKey}-${task.id}-${taskIndex}`}
+                        className="flex items-start justify-between gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2"
+                      >
+                        <div>
+                          <p className="text-sm font-medium text-slate-900">{task.title}</p>
+                          <p className="text-xs text-slate-500 mt-0.5">
+                            Assigned to: {task.assignedToName}
+                          </p>
+                        </div>
+                        <StatusBadge status={task.status} size="sm" />
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              </div>
-            ))}
+              ))}
+
+            {timelineCategory === "status" &&
+              timelineByStatus.map((group) => (
+                <div key={group.status} className="rounded-xl border border-slate-100 bg-slate-50/60 p-4">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-semibold text-slate-900">{group.label}</p>
+                    <span className="text-xs font-medium text-slate-500">{group.tasks.length} task(s)</span>
+                  </div>
+                  <div className="mt-3 space-y-2">
+                    {group.tasks.map((task, taskIndex) => (
+                      <div
+                        key={`${group.status}-${task.id}-${taskIndex}`}
+                        className="flex items-start justify-between gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2"
+                      >
+                        <div>
+                          <p className="text-sm font-medium text-slate-900">{task.title}</p>
+                          <p className="text-xs text-slate-500 mt-0.5">
+                            Due: {formatDate(task.dueDate)} · Assigned to: {task.assignedToName}
+                          </p>
+                        </div>
+                        <StatusBadge status={task.status} size="sm" />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
           </div>
         </div>
       )}

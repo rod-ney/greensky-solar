@@ -651,8 +651,8 @@ export default function AddressPage() {
 
       {/* Split Layout */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        {/* ===== LEFT SIDE ===== */}
-        <div className="space-y-4">
+        {/* ===== RIGHT SIDE (LG) - SAVED ADDRESSES ===== */}
+        <div className="space-y-4 lg:order-2">
           {addresses.map((addr) => {
             const expanded = expandedId === addr.id;
             const isSelected = selectedAddr?.id === addr.id;
@@ -834,8 +834,8 @@ export default function AddressPage() {
           )}
         </div>
 
-        {/* ===== RIGHT SIDE - MAP ===== */}
-        <div className="space-y-4">
+        {/* ===== LEFT SIDE (LG) - LOCATION + ADDRESS ===== */}
+        <div className="space-y-4 lg:order-1">
           <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden">
             {/* Map Header */}
             <div className="border-b border-slate-100 px-5 py-3 flex items-center justify-between">

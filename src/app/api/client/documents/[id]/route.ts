@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import {
   updateDocumentApprovalStatusInDb,
   documentBelongsToUser,
+  deleteClientDocumentFromDb,
 } from "@/lib/server/client-documents-repository";
 import { requireClient } from "@/lib/server/auth-guard";
 import { updateDocumentSchema } from "@/lib/validations";
@@ -28,6 +29,22 @@ export async function PATCH(request: Request, context: RouteContext) {
       return NextResponse.json({ error: "Document not found." }, { status: 404 });
     }
     return NextResponse.json(updated);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+}
+
+export async function DELETE(_request: Request, context: RouteContext) {
+  const auth = await requireClient();
+  if (auth instanceof NextResponse) return auth;
+  try {
+    const { id } = await context.params;
+    const deleted = await deleteClientDocumentFromDb(id, auth.userId);
+    if (!deleted) {
+      return NextResponse.json({ error: "Document not found." }, { status: 404 });
+    }
+    return NextResponse.json({ ok: true });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
     return NextResponse.json({ error: message }, { status: 500 });

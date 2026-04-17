@@ -549,6 +549,66 @@ export async function updateReportStatusInDb(
   };
 }
 
+export async function updateReportInDb(
+  id: string,
+  data: {
+    title?: string;
+    description?: string;
+    amount?: number | null;
+    projectId?: string | null;
+    projectName?: string | null;
+  }
+): Promise<Report | null> {
+  const sets: string[] = [];
+  const params: unknown[] = [id];
+  let idx = 2;
+
+  if (data.title !== undefined) {
+    sets.push(`title = $${idx++}`);
+    params.push(data.title);
+  }
+  if (data.description !== undefined) {
+    sets.push(`description = $${idx++}`);
+    params.push(data.description);
+  }
+  if (data.amount !== undefined) {
+    sets.push(`amount = $${idx++}`);
+    params.push(data.amount);
+  }
+  if (data.projectId !== undefined) {
+    sets.push(`project_id = $${idx++}`);
+    params.push(data.projectId);
+  }
+  if (data.projectName !== undefined) {
+    sets.push(`project_name = $${idx++}`);
+    params.push(data.projectName);
+  }
+
+  if (sets.length === 0) return null;
+
+  const result = await dbQuery<ReportRow>(
+    `UPDATE reports
+     SET ${sets.join(", ")}
+     WHERE id = $1
+     RETURNING id, title, type, status, submitted_by, submitted_at, project_id, project_name, amount, description`,
+    params
+  );
+  const row = result.rows[0];
+  if (!row) return null;
+  return {
+    id: row.id,
+    title: row.title,
+    type: row.type,
+    status: row.status,
+    submittedBy: row.submitted_by,
+    submittedAt: toIsoDateManila(row.submitted_at),
+    projectId: row.project_id ?? undefined,
+    projectName: row.project_name ?? undefined,
+    amount: row.amount !== null ? Number(row.amount) : undefined,
+    description: row.description,
+  };
+}
+
 export async function deleteReportFromDb(id: string): Promise<boolean> {
   const result = await dbQuery(
     "DELETE FROM reports WHERE id = $1 RETURNING id",
@@ -1037,17 +1097,25 @@ export async function deleteSavedAddressInDb(
 }
 
 export async function listClientContactsFromDb(): Promise<
-  { id: string; name: string; company: string }[]
+  { id: string; name: string; company: string; userId?: string }[]
 > {
   const result = await dbQuery<{
     id: string;
     name: string;
     company: string | null;
-  }>("SELECT id, name, company FROM clients ORDER BY name ASC");
+    user_id: string | null;
+  }>(
+    `SELECT c.id, c.name, c.company, u.id AS user_id
+     FROM clients c
+     LEFT JOIN users u
+       ON LOWER(TRIM(u.email)) = LOWER(TRIM(c.email))
+     ORDER BY c.name ASC`
+  );
   return result.rows.map((row) => ({
     id: row.id,
     name: row.name,
     company: row.company ?? row.name,
+    userId: row.user_id ?? undefined,
   }));
 }
 
@@ -1169,6 +1237,11 @@ function mapSupportTicketRow(row: SupportTicketRow): SupportTicket {
     status: row.status,
     createdAt: new Date(row.created_at).toISOString(),
   };
+}
+
+export async function deleteSupportTicketFromDb(id: string): Promise<boolean> {
+  const result = await dbQuery("DELETE FROM support_tickets WHERE id = $1 RETURNING id", [id]);
+  return (result.rowCount ?? 0) > 0;
 }
 
 export async function updateSupportTicketInDb(

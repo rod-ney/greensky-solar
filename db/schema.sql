@@ -291,6 +291,7 @@ CREATE TABLE IF NOT EXISTS saved_addresses (
 ALTER TABLE saved_addresses ADD COLUMN IF NOT EXISTS user_id TEXT REFERENCES users(id) ON DELETE SET NULL;
 
 ALTER TABLE bookings ADD COLUMN IF NOT EXISTS address_id TEXT REFERENCES saved_addresses(id) ON DELETE SET NULL;
+ALTER TABLE bookings ADD COLUMN IF NOT EXISTS end_date DATE;
 UPDATE bookings b SET address_id = sa.id
 FROM saved_addresses sa
 WHERE b.address_id IS NULL AND TRIM(b.address) = TRIM(sa.full_address);

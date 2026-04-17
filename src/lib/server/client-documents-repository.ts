@@ -11,7 +11,23 @@ type DocumentRow = {
   project_name: string | null;
   status: Document["status"];
   approval_status: Document["approvalStatus"] | null;
+  report_id: string | null;
+  linked_report_type: string | null;
 };
+
+const DOCUMENT_SELECT = `
+  SELECT d.id, d.title, d.type, d.file_size, d.uploaded_at, d.project_name, d.status, d.approval_status, d.report_id,
+         r.type AS linked_report_type
+  FROM documents d
+  LEFT JOIN reports r ON r.id = d.report_id
+`;
+
+function mapLinkedReportType(value: string | null): Document["linkedReportType"] | undefined {
+  if (value === "service" || value === "quotation" || value === "revenue") {
+    return value;
+  }
+  return undefined;
+}
 
 function mapDocument(row: DocumentRow): Document {
   return {
@@ -23,6 +39,8 @@ function mapDocument(row: DocumentRow): Document {
     projectName: row.project_name ?? undefined,
     status: row.status,
     approvalStatus: row.approval_status ?? undefined,
+    reportId: row.report_id ?? undefined,
+    linkedReportType: mapLinkedReportType(row.linked_report_type),
   };
 }
 
@@ -30,19 +48,17 @@ export async function listClientDocumentsFromDb(userId?: string): Promise<Docume
   const result = userId
     ? await dbQuery<DocumentRow>(
         `
-          SELECT id, title, type, file_size, uploaded_at, project_name, status, approval_status
-          FROM documents
-          WHERE user_id = $1
-          ORDER BY uploaded_at DESC
+          ${DOCUMENT_SELECT}
+          WHERE d.user_id = $1
+          ORDER BY d.uploaded_at DESC
         `,
         [userId]
       )
     : await dbQuery<DocumentRow>(
         `
-          SELECT id, title, type, file_size, uploaded_at, project_name, status, approval_status
-          FROM documents
-          WHERE user_id IS NULL
-          ORDER BY uploaded_at DESC
+          ${DOCUMENT_SELECT}
+          WHERE d.user_id IS NULL
+          ORDER BY d.uploaded_at DESC
         `
       );
   return result.rows.map(mapDocument);
@@ -53,8 +69,7 @@ export async function addClientDocumentToDb(
   userId?: string,
   reportId?: string
 ): Promise<Document> {
-  const countResult = await dbQuery<{ count: string }>("SELECT COUNT(*)::text AS count FROM documents");
-  const nextId = `doc-${String(Number(countResult.rows[0]?.count ?? "0") + 1).padStart(3, "0")}`;
+  const nextId = `doc-${crypto.randomUUID()}`;
 
   await dbQuery(
     `
@@ -77,9 +92,8 @@ export async function addClientDocumentToDb(
 
   const result = await dbQuery<DocumentRow>(
     `
-      SELECT id, title, type, file_size, uploaded_at, project_name, status, approval_status
-      FROM documents
-      WHERE id = $1
+      ${DOCUMENT_SELECT}
+      WHERE d.id = $1
       LIMIT 1
     `,
     [nextId]
@@ -106,13 +120,32 @@ export async function updateDocumentApprovalStatusInDb(
   id: string,
   approvalStatus: Document["approvalStatus"]
 ): Promise<Document | null> {
-  const result = await dbQuery<DocumentRow>(
-    `UPDATE documents
-     SET approval_status = $2
-     WHERE id = $1
-     RETURNING id, title, type, file_size, uploaded_at, project_name, status, approval_status`,
+  const updated = await dbQuery(
+    `UPDATE documents SET approval_status = $2 WHERE id = $1`,
     [id, approvalStatus]
+  );
+  if ((updated.rowCount ?? 0) === 0) {
+    return null;
+  }
+  const result = await dbQuery<DocumentRow>(
+    `
+      ${DOCUMENT_SELECT}
+      WHERE d.id = $1
+      LIMIT 1
+    `,
+    [id]
   );
   const row = result.rows[0];
   return row ? mapDocument(row) : null;
+}
+
+export async function deleteClientDocumentFromDb(
+  id: string,
+  userId: string
+): Promise<boolean> {
+  const result = await dbQuery(
+    "DELETE FROM documents WHERE id = $1 AND user_id = $2 RETURNING id",
+    [id, userId]
+  );
+  return (result.rowCount ?? 0) > 0;
 }

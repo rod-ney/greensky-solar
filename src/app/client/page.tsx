@@ -70,87 +70,105 @@ export default function ClientHomePage() {
     [todayStart]
   );
 
-  const navCards = useMemo(
+  const navCardsByCategory = useMemo(
     () => [
       {
-        label: "Book Now",
-        description: "Create a new booking in a guided step-by-step flow",
-        href: "/client/book-now",
-        icon: PlusCircle,
-        color: "bg-emerald-600",
-        iconBg: "bg-emerald-50",
-        iconColor: "text-emerald-600",
-        stat: "Quick booking",
-      },
-      {
-        label: "Booking",
-        description: "Schedule and manage your service appointments",
-        href: "/client/booking",
-        icon: CalendarCheck,
-        color: "bg-brand",
-        iconBg: "bg-brand/10",
-        iconColor: "text-brand",
-        stat: `${bookings.filter(isUpcoming).length} upcoming`,
-      },
-      {
-        label: "My Projects",
-        description: "Track your solar installation projects and detailed timeline",
-        href: "/client/projects",
-        icon: ClipboardList,
-        color: "bg-indigo-600",
-        iconBg: "bg-indigo-50",
-        iconColor: "text-indigo-600",
-        stat: `${projectCount} project${projectCount !== 1 ? "s" : ""}`,
-      },
-      {
-        label: "Calendar",
-        description: "View available dates and scheduled bookings",
-        href: "/client/calendar",
-        icon: Calendar,
-        color: "bg-blue-600",
-        iconBg: "bg-blue-50",
-        iconColor: "text-blue-600",
-        stat: "View schedule",
-      },
-      {
-        label: "Address",
-        description: "Manage your properties and appliance details",
-        href: "/client/address",
+        title: "Get Started",
         icon: MapPin,
-        color: "bg-orange-500",
-        iconBg: "bg-orange-50",
-        iconColor: "text-orange-600",
-        stat: "Saved addresses",
+        cards: [
+          {
+            label: "Address",
+            description: "Manage your properties and appliance details",
+            href: "/client/address",
+            icon: MapPin,
+            color: "bg-orange-500",
+            iconBg: "bg-orange-50",
+            iconColor: "text-orange-600",
+            stat: "Saved addresses",
+          },
+          {
+            label: "Book Now",
+            description: "Create a new booking in a guided step-by-step flow",
+            href: "/client/book-now",
+            icon: PlusCircle,
+            color: "bg-emerald-600",
+            iconBg: "bg-emerald-50",
+            iconColor: "text-emerald-600",
+            stat: "Quick booking",
+          },
+        ],
       },
       {
-        label: "Payments",
-        description: "Track your invoices and payment history",
-        href: "/client/payments",
-        icon: CreditCard,
-        color: "bg-purple-600",
-        iconBg: "bg-purple-50",
-        iconColor: "text-purple-600",
-        stat: `${payments.filter((p) => p.status === "pending").length} pending`,
+        title: "Bookings & Projects",
+        icon: ClipboardList,
+        cards: [
+          {
+            label: "Booking",
+            description: "Schedule and manage your service appointments",
+            href: "/client/booking",
+            icon: CalendarCheck,
+            color: "bg-brand",
+            iconBg: "bg-brand/10",
+            iconColor: "text-brand",
+            stat: `${bookings.filter(isUpcoming).length} upcoming`,
+          },
+          {
+            label: "Calendar",
+            description: "View available dates and scheduled bookings",
+            href: "/client/calendar",
+            icon: Calendar,
+            color: "bg-blue-600",
+            iconBg: "bg-blue-50",
+            iconColor: "text-blue-600",
+            stat: "View schedule",
+          },
+          {
+            label: "My Projects",
+            description: "Track your solar installation projects and detailed timeline",
+            href: "/client/projects",
+            icon: ClipboardList,
+            color: "bg-indigo-600",
+            iconBg: "bg-indigo-50",
+            iconColor: "text-indigo-600",
+            stat: `${projectCount} project${projectCount !== 1 ? "s" : ""}`,
+          },
+        ],
       },
       {
-        label: "Documents",
-        description: "Access contracts, warranties, and reports",
-        href: "/client/documents",
-        icon: FileText,
-        color: "bg-teal-600",
-        iconBg: "bg-teal-50",
-        iconColor: "text-teal-600",
-        stat: "View files",
-      },
-      {
-        label: "Warranty & Support",
-        description: "View completed projects under warranty and report any issues",
-        href: "/client/warranty",
+        title: "Billing & Support",
         icon: ShieldCheck,
-        color: "bg-amber-600",
-        iconBg: "bg-amber-50",
-        iconColor: "text-amber-600",
-        stat: `${warrantyProjectCount} project${warrantyProjectCount !== 1 ? "s" : ""} under warranty`,
+        cards: [
+          {
+            label: "Payments",
+            description: "Track your invoices and payment history",
+            href: "/client/payments",
+            icon: CreditCard,
+            color: "bg-purple-600",
+            iconBg: "bg-purple-50",
+            iconColor: "text-purple-600",
+            stat: `${payments.filter((p) => p.status === "pending").length} pending`,
+          },
+          {
+            label: "Documents",
+            description: "Access contracts, warranties, and reports",
+            href: "/client/documents",
+            icon: FileText,
+            color: "bg-teal-600",
+            iconBg: "bg-teal-50",
+            iconColor: "text-teal-600",
+            stat: "View files",
+          },
+          {
+            label: "Warranty & Support",
+            description: "View completed projects under warranty and report any issues",
+            href: "/client/warranty",
+            icon: ShieldCheck,
+            color: "bg-amber-600",
+            iconBg: "bg-amber-50",
+            iconColor: "text-amber-600",
+            stat: `${warrantyProjectCount} project${warrantyProjectCount !== 1 ? "s" : ""} under warranty`,
+          },
+        ],
       },
     ],
     [bookings, payments, warrantyProjectCount, projectCount, isUpcoming]
@@ -205,63 +223,94 @@ export default function ClientHomePage() {
 
       {/* Quick Stats */}
       <div className="grid grid-cols-3 gap-3 sm:gap-4">
-        <div className="rounded-xl border border-slate-200 bg-white p-4 text-center">
-          <div className="mx-auto flex h-9 w-9 items-center justify-center rounded-lg bg-brand-50">
+        <div className="relative overflow-hidden rounded-xl border border-slate-200 bg-gradient-to-br from-slate-50 via-white to-slate-100 p-4 text-center">
+          <div className="relative z-10 mx-auto flex h-9 w-9 items-center justify-center">
             <Zap className="h-4 w-4 text-brand" />
           </div>
-          <p className="mt-2 text-lg font-bold text-slate-900">{upcomingBookings}</p>
-          <p className="text-[11px] text-slate-500">Upcoming Bookings</p>
+          <p className="relative z-10 mt-2 text-lg font-bold text-slate-900">{upcomingBookings}</p>
+          <p className="relative z-10 text-[11px] text-slate-500">Upcoming Bookings</p>
+          <div className="pointer-events-none absolute -right-4 -top-4 h-16 w-16 rounded-full bg-slate-300/20" />
+          <div className="pointer-events-none absolute right-3 -bottom-5 h-14 w-14 rounded-full bg-slate-200/30" />
         </div>
-        <div className="rounded-xl border border-slate-200 bg-white p-4 text-center">
-          <div className="mx-auto flex h-9 w-9 items-center justify-center rounded-lg bg-blue-50">
+        <div className="relative overflow-hidden rounded-xl border border-slate-200 bg-gradient-to-br from-slate-50 via-white to-slate-100 p-4 text-center">
+          <div className="relative z-10 mx-auto flex h-9 w-9 items-center justify-center">
             <CalendarCheck className="h-4 w-4 text-blue-600" />
           </div>
-          <p className="mt-2 text-lg font-bold text-slate-900">{totalBookings}</p>
-          <p className="text-[11px] text-slate-500">Total Bookings</p>
+          <p className="relative z-10 mt-2 text-lg font-bold text-slate-900">{totalBookings}</p>
+          <p className="relative z-10 text-[11px] text-slate-500">Total Bookings</p>
+          <div className="pointer-events-none absolute -right-4 -top-4 h-16 w-16 rounded-full bg-slate-300/20" />
+          <div className="pointer-events-none absolute right-3 -bottom-5 h-14 w-14 rounded-full bg-slate-200/30" />
         </div>
-        <div className="rounded-xl border border-slate-200 bg-white p-4 text-center">
-          <div className="mx-auto flex h-9 w-9 items-center justify-center rounded-lg bg-green-50">
+        <div className="relative overflow-hidden rounded-xl border border-slate-200 bg-gradient-to-br from-slate-50 via-white to-slate-100 p-4 text-center">
+          <div className="relative z-10 mx-auto flex h-9 w-9 items-center justify-center">
             <CreditCard className="h-4 w-4 text-green-600" />
           </div>
-          <p className="mt-2 text-lg font-bold text-slate-900">{paymentProgressPercent}%</p>
-          <p className="text-[11px] text-slate-500">Payments Settled</p>
+          <p className="relative z-10 mt-2 text-lg font-bold text-slate-900">{paymentProgressPercent}%</p>
+          <p className="relative z-10 text-[11px] text-slate-500">Payments Settled</p>
+          <div className="pointer-events-none absolute -right-4 -top-4 h-16 w-16 rounded-full bg-slate-300/20" />
+          <div className="pointer-events-none absolute right-3 -bottom-5 h-14 w-14 rounded-full bg-slate-200/30" />
         </div>
       </div>
 
       {/* Navigation Cards */}
       <div>
         <h2 className="text-base font-semibold text-slate-900 mb-4">Quick Access</h2>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {navCards.map((card) => {
-            const Icon = card.icon;
-            return (
-              <Link
-                key={card.href}
-                href={card.href}
-                className="group relative rounded-2xl border border-slate-200 bg-white p-5 transition-all hover:border-slate-300 hover:shadow-lg hover:-translate-y-0.5"
-              >
-                <div className="flex items-start justify-between">
-                  <div
-                    className={`flex h-12 w-12 items-center justify-center rounded-xl ${card.iconBg}`}
-                  >
-                    <Icon className={`h-6 w-6 ${card.iconColor}`} />
-                  </div>
-                  <ArrowRight className="h-4 w-4 text-slate-300 transition-all group-hover:text-brand group-hover:translate-x-0.5" />
-                </div>
-                <h3 className="mt-4 text-base font-semibold text-slate-900 group-hover:text-brand transition-colors">
-                  {card.label}
-                </h3>
-                <p className="mt-1 text-sm text-slate-500 leading-relaxed">
-                  {card.description}
-                </p>
-                <div className="mt-3 pt-3 border-t border-slate-100">
-                  <span className="text-xs font-medium text-slate-400">
-                    {card.stat}
-                  </span>
-                </div>
-              </Link>
-            );
-          })}
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+          {navCardsByCategory.map((section) => (
+            <div
+              key={section.title}
+              className="group relative flex min-h-[210px] flex-col overflow-hidden rounded-2xl bg-gradient-to-br from-brand to-emerald-700 p-5 text-white transition-all duration-300 hover:shadow-lg"
+            >
+              <div className="relative z-10 flex items-center gap-2">
+                <section.icon className="h-5 w-5 text-white/90" />
+                <h3 className="text-sm font-semibold text-white">{section.title}</h3>
+              </div>
+              <p className="relative z-10 mt-auto text-xs text-white/70 transition-opacity duration-200 group-hover:opacity-0 group-focus-within:opacity-0">
+                Hover to expand
+              </p>
+              <div className="relative z-10 mt-3 grid max-h-0 grid-cols-1 gap-4 overflow-hidden transition-all duration-300 group-hover:max-h-[1200px] group-focus-within:max-h-[1200px]">
+                {section.cards.map((card) => {
+                  const Icon = card.icon;
+                  return (
+                    <Link
+                      key={card.href}
+                      href={card.href}
+                      className="group/card relative overflow-hidden rounded-2xl border border-slate-200 bg-white p-5 transition-all hover:border-slate-300 hover:shadow-lg hover:-translate-y-0.5"
+                    >
+                      <div className="pointer-events-none absolute inset-0">
+                        <div
+                          className={`absolute -right-8 -top-8 h-24 w-24 rounded-full opacity-10 blur-2xl ${card.color}`}
+                        />
+                        <div
+                          className={`absolute -left-6 bottom-4 h-16 w-16 rounded-full opacity-10 blur-xl ${card.color}`}
+                        />
+                      </div>
+                      <div className="relative z-10 flex items-start justify-between">
+                        <div className="flex h-12 w-12 items-center justify-center">
+                          <Icon className={`h-6 w-6 ${card.iconColor}`} />
+                        </div>
+                        <ArrowRight className="h-4 w-4 text-slate-300 transition-all group-hover/card:text-brand group-hover/card:translate-x-0.5" />
+                      </div>
+                      <h3 className="relative z-10 mt-4 text-base font-semibold text-slate-900 group-hover/card:text-brand transition-colors">
+                        {card.label}
+                      </h3>
+                      <p className="relative z-10 mt-1 text-sm text-slate-500 leading-relaxed">
+                        {card.description}
+                      </p>
+                      <div className="relative z-10 mt-3 pt-3 border-t border-slate-100">
+                        <span className="text-xs font-medium text-slate-400">
+                          {card.stat}
+                        </span>
+                      </div>
+                    </Link>
+                  );
+                })}
+              </div>
+              <div className="pointer-events-none absolute -right-6 -top-6 h-20 w-20 rounded-full bg-white/5" />
+              <div className="pointer-events-none absolute -right-1 top-9 h-12 w-12 rounded-full bg-white/5" />
+              <div className="pointer-events-none absolute right-10 -bottom-6 h-16 w-16 rounded-full bg-white/5" />
+            </div>
+          ))}
         </div>
       </div>
     </div>

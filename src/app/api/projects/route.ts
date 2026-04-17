@@ -49,6 +49,7 @@ export async function POST(request: Request) {
       priority: body.priority,
       description: body.description,
       projectLead: body.projectLead || undefined,
+      assignedTechnicians: body.assignedTechnicians,
       bookingId: body.bookingId,
       userId: body.userId,
     });

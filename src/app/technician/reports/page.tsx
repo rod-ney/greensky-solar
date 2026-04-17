@@ -9,6 +9,8 @@ import {
   Clock,
   Eye,
   Trash2,
+  Pencil,
+  CalendarRange,
 } from "lucide-react";
 import Button from "@/components/ui/Button";
 import Modal from "@/components/ui/Modal";
@@ -17,6 +19,8 @@ import { getTodayInManila } from "@/lib/date-utils";
 import { useSessionUser } from "@/lib/client-session";
 import { toast } from "@/lib/toast";
 import type { Project, Report, Technician } from "@/types";
+import type { Booking } from "@/types/client";
+import { downloadQuotationReportPdf } from "@/lib/pdf/quotation-report-pdf";
 
 type TechReport = {
   id: string;
@@ -26,8 +30,75 @@ type TechReport = {
   status: "pending" | "approved" | "rejected";
   submittedAt: string;
   description: string;
+  amount?: number;
+  clientApprovalStatus?: Report["clientApprovalStatus"];
   attachment?: string;
 };
+
+type QuotationData = {
+  clientName: string;
+  bookingId?: string;
+  location?: string;
+  clientNumber?: string;
+  technician?: string;
+  adminComment?: string;
+  materials: string;
+  materialItems?: {
+    description: string;
+    qty: number;
+    amt: number;
+    total: number;
+  }[];
+  installationStartDate: string;
+  installationEndDate: string;
+};
+
+type MaterialItem = {
+  description: string;
+  qty: number;
+  amt: number;
+  total: number;
+};
+
+const EMPTY_MATERIAL_ITEM: MaterialItem = {
+  description: "",
+  qty: 1,
+  amt: 0,
+  total: 0,
+};
+
+function normalizeQuotationMaterialItems(data: QuotationData): MaterialItem[] {
+  if (Array.isArray(data.materialItems) && data.materialItems.length > 0) {
+    return data.materialItems.map((item) => ({
+      description: item.description ?? "",
+      qty: Number(item.qty) || 0,
+      amt: Number(item.amt) || 0,
+      total: Number(item.total) || 0,
+    }));
+  }
+  return data.materials
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((description) => ({
+      description,
+      qty: 1,
+      amt: 0,
+      total: 0,
+    }));
+}
+
+function parseQuotationData(description: string): QuotationData | null {
+  try {
+    const parsed = JSON.parse(description) as Record<string, unknown>;
+    if (typeof parsed.clientName === "string" && typeof parsed.materials === "string") {
+      return parsed as unknown as QuotationData;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
 
 const typeLabels: Record<TechReport["type"], string> = {
   service: "Service Report",
@@ -43,41 +114,50 @@ const statusColors: Record<TechReport["status"], string> = {
 
 export default function TechnicianReportsPage() {
   const [projects, setProjects] = useState<Project[]>([]);
-  const [technicians, setTechnicians] = useState<Technician[]>([]);
+  const [techProfile, setTechProfile] = useState<Technician | null>(null);
+  const [technicianOptions, setTechnicianOptions] = useState<Technician[]>([]);
   const [allReports, setAllReports] = useState<Report[]>([]);
+  const [bookings, setBookings] = useState<Booking[]>([]);
   const sessionUser = useSessionUser();
 
   useEffect(() => {
     const load = async () => {
       try {
-        const [projectsRes, techRes, reportsRes] = await Promise.all([
+        const [projectsRes, techRes, reportsRes, bookingsRes, techListRes] = await Promise.all([
           fetch("/api/projects", { cache: "no-store" }),
           fetch("/api/profile/technician", { cache: "no-store" }),
           fetch("/api/reports", { cache: "no-store" }),
+          fetch("/api/bookings", { cache: "no-store" }),
+          fetch("/api/technicians", { cache: "no-store" }),
         ]);
         setProjects(projectsRes.ok ? (((await projectsRes.json()) as { items: Project[] }).items ?? []) : []);
         const techData = techRes.ok ? ((await techRes.json()) as Technician | null) : null;
-        setTechnicians(techData ? [techData] : []);
+        setTechProfile(techData);
+        setTechnicianOptions(techListRes.ok ? ((await techListRes.json()) as Technician[]) : []);
         setAllReports(reportsRes.ok ? ((await reportsRes.json()) as Report[]) : []);
+        setBookings(bookingsRes.ok ? ((await bookingsRes.json()) as Booking[]) : []);
       } catch {
         setProjects([]);
-        setTechnicians([]);
+        setTechProfile(null);
+        setTechnicianOptions([]);
         setAllReports([]);
+        setBookings([]);
       }
     };
     void load();
   }, []);
 
-  const tech = technicians[0] ?? null;
-
   const myProjects = useMemo(
-    () => projects.filter((p) => (tech ? p.assignedTechnicians.includes(tech.id) : false)),
-    [projects, tech]
+    () =>
+      projects.filter((p) =>
+        techProfile ? p.assignedTechnicians.includes(techProfile.id) : false
+      ),
+    [projects, techProfile]
   );
 
   const reports = useMemo<TechReport[]>(() => {
     const submittedByNames = new Set(
-      [sessionUser.name, tech?.name].filter(Boolean) as string[]
+      [sessionUser.name, techProfile?.name].filter(Boolean) as string[]
     );
 
     return allReports
@@ -97,8 +177,20 @@ export default function TechnicianReportsPage() {
         status: report.status,
         submittedAt: report.submittedAt,
         description: report.description ?? "",
+        amount: report.amount,
+        clientApprovalStatus: report.clientApprovalStatus ?? null,
       }));
-  }, [allReports, sessionUser.email, sessionUser.name, tech?.name]);
+  }, [allReports, sessionUser.email, sessionUser.name, techProfile?.name]);
+
+  const completedSiteInspectionBookings = useMemo(
+    () =>
+      bookings.filter(
+        (booking) =>
+          booking.status === "completed" &&
+          booking.serviceType === "site_inspection"
+      ),
+    [bookings]
+  );
 
   const [showCreate, setShowCreate] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
@@ -107,6 +199,216 @@ export default function TechnicianReportsPage() {
   const [selectedReport, setSelectedReport] = useState<TechReport | null>(null);
   const [viewTarget, setViewTarget] = useState<TechReport | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<TechReport | null>(null);
+
+  // Quotation form
+  const [showQuotation, setShowQuotation] = useState(false);
+  const [showQuotConfirm, setShowQuotConfirm] = useState(false);
+  const [editingQuotation, setEditingQuotation] = useState<TechReport | null>(null);
+  const [quotBookingId, setQuotBookingId] = useState("");
+  const [quotClientName, setQuotClientName] = useState("");
+  const [quotLocation, setQuotLocation] = useState("");
+  const [quotClientNumber, setQuotClientNumber] = useState("");
+  const [quotTechnician, setQuotTechnician] = useState("");
+  const [quotMaterialItems, setQuotMaterialItems] = useState<MaterialItem[]>([
+    { ...EMPTY_MATERIAL_ITEM },
+  ]);
+  const [quotTotal, setQuotTotal] = useState("");
+  const [quotStartDate, setQuotStartDate] = useState("");
+  const [quotEndDate, setQuotEndDate] = useState("");
+  const [quotProject, setQuotProject] = useState("");
+  const today = getTodayInManila();
+
+  const serializedMaterials = useMemo(
+    () =>
+      quotMaterialItems
+        .filter((item) => item.description.trim())
+        .map(
+          (item) =>
+            `${item.description.trim()} | QTY: ${item.qty} | AMT: ${item.amt} | TOTAL: ${item.total}`
+        )
+        .join("\n"),
+    [quotMaterialItems]
+  );
+
+  const canCreateQuotation =
+    quotClientName.trim() &&
+    serializedMaterials.trim() &&
+    quotTotal &&
+    quotStartDate &&
+    quotEndDate;
+
+  const resetQuotationForm = () => {
+    setQuotBookingId("");
+    setQuotClientName("");
+    setQuotLocation("");
+    setQuotClientNumber("");
+    setQuotTechnician(techProfile?.name ?? "");
+    setQuotMaterialItems([{ ...EMPTY_MATERIAL_ITEM }]);
+    setQuotTotal("");
+    setQuotStartDate("");
+    setQuotEndDate("");
+    setQuotProject("");
+    setEditingQuotation(null);
+  };
+
+  const openEditQuotation = (report: TechReport) => {
+    const data = parseQuotationData(report.description);
+    if (data) {
+      setQuotClientName(data.clientName);
+      setQuotBookingId(data.bookingId ?? "");
+      setQuotLocation(data.location ?? "");
+      setQuotClientNumber(data.clientNumber ?? "");
+      setQuotTechnician(data.technician ?? techProfile?.name ?? "");
+      const parsedItems = normalizeQuotationMaterialItems(data);
+      setQuotMaterialItems(
+        parsedItems.length > 0 ? parsedItems : [{ ...EMPTY_MATERIAL_ITEM }]
+      );
+      setQuotTotal(report.amount?.toString() ?? "");
+      setQuotStartDate(data.installationStartDate);
+      setQuotEndDate(data.installationEndDate);
+    } else {
+      setQuotBookingId("");
+      setQuotClientName("");
+      setQuotLocation("");
+      setQuotClientNumber("");
+      setQuotTechnician(techProfile?.name ?? "");
+      setQuotMaterialItems([
+        { ...EMPTY_MATERIAL_ITEM, description: report.description },
+      ]);
+      setQuotTotal(report.amount?.toString() ?? "");
+      setQuotStartDate("");
+      setQuotEndDate("");
+    }
+    setQuotProject("");
+    setEditingQuotation(report);
+    setShowQuotation(true);
+  };
+
+  const handleSelectQuotationBooking = (bookingId: string) => {
+    setQuotBookingId(bookingId);
+    const selectedBooking = completedSiteInspectionBookings.find((booking) => booking.id === bookingId);
+    if (!selectedBooking) {
+      setQuotClientName("");
+      setQuotLocation("");
+      setQuotClientNumber("");
+      return;
+    }
+    setQuotClientName(selectedBooking.clientName?.trim() || "Unnamed client");
+    setQuotLocation(selectedBooking.address);
+    setQuotClientNumber(selectedBooking.clientContactNumber ?? "");
+  };
+
+  const updateMaterialItem = (
+    index: number,
+    key: keyof MaterialItem,
+    value: string | number
+  ) => {
+    setQuotMaterialItems((prev) =>
+      prev.map((item, itemIndex) => {
+        if (itemIndex !== index) return item;
+        if (key === "description") {
+          return { ...item, description: String(value) };
+        }
+        const numValue = Math.max(0, Number(value) || 0);
+        return { ...item, [key]: numValue };
+      })
+    );
+  };
+
+  const addMaterialItem = () => {
+    setQuotMaterialItems((prev) => [...prev, { ...EMPTY_MATERIAL_ITEM }]);
+  };
+
+  const removeMaterialItem = (index: number) => {
+    setQuotMaterialItems((prev) =>
+      prev.length <= 1 ? [{ ...EMPTY_MATERIAL_ITEM }] : prev.filter((_, i) => i !== index)
+    );
+  };
+
+  const handleSaveQuotation = () => {
+    if (quotStartDate < today || quotEndDate < today) {
+      toast.error("Past installation dates are not allowed.");
+      return;
+    }
+    const proj = myProjects.find((p) => p.id === quotProject);
+    const descriptionJson = JSON.stringify({
+      clientName: quotClientName.trim(),
+      bookingId: quotBookingId || undefined,
+      location: quotLocation.trim(),
+      clientNumber: quotClientNumber.trim(),
+      technician: quotTechnician.trim(),
+      materials: serializedMaterials.trim(),
+      materialItems: quotMaterialItems
+        .filter((item) => item.description.trim())
+        .map((item) => ({
+          description: item.description.trim(),
+          qty: item.qty,
+          amt: item.amt,
+          total: item.total,
+        })),
+      installationStartDate: quotStartDate,
+      installationEndDate: quotEndDate,
+    });
+    const amount = parseFloat(quotTotal);
+
+    const run = async () => {
+      try {
+        if (editingQuotation) {
+          const response = await fetch(`/api/reports/${editingQuotation.id}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              title: `Quotation - ${quotClientName.trim()}`,
+              description: descriptionJson,
+              amount: isNaN(amount) ? undefined : amount,
+              projectName: proj?.name ?? editingQuotation.projectName,
+              projectId: quotProject || undefined,
+            }),
+          });
+          const payload = (await response.json()) as Report | { error?: string };
+          if (!response.ok) {
+            toast.error("error" in payload && payload.error ? payload.error : "Failed to update quotation.");
+            return;
+          }
+          const updated = payload as Report;
+          setAllReports((prev) => prev.map((r) => (r.id === updated.id ? updated : r)));
+          setShowQuotation(false);
+          setShowQuotConfirm(false);
+          resetQuotationForm();
+          toast.success("Quotation updated successfully.");
+        } else {
+          const response = await fetch("/api/reports", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              title: `Quotation - ${quotClientName.trim()}`,
+              type: "quotation",
+              status: "pending",
+              submittedBy: techProfile?.name ?? sessionUser.name,
+              submittedAt: getTodayInManila(),
+              projectName: proj?.name ?? "",
+              amount: isNaN(amount) ? undefined : amount,
+              description: descriptionJson,
+            }),
+          });
+          const payload = (await response.json()) as Report | { error?: string };
+          if (!response.ok) {
+            toast.error("error" in payload && payload.error ? payload.error : "Failed to create quotation.");
+            return;
+          }
+          const created = payload as Report;
+          setAllReports((prev) => [created, ...prev]);
+          setShowQuotation(false);
+          setShowQuotConfirm(false);
+          resetQuotationForm();
+          toast.success("Quotation submitted to admin for review.");
+        }
+      } catch {
+        toast.error("Failed to save quotation.");
+      }
+    };
+    void run();
+  };
 
   // Create form
   const [createTitle, setCreateTitle] = useState("");
@@ -137,7 +439,7 @@ export default function TechnicianReportsPage() {
             title: createTitle.trim(),
             type: createType,
             status: "pending",
-            submittedBy: tech?.name ?? sessionUser.name,
+              submittedBy: techProfile?.name ?? sessionUser.name,
             submittedAt: getTodayInManila(),
             projectName: proj?.name ?? "",
             description: `${createDescription.trim()}${createAttachment ? ` [attachment:${createAttachment.name}]` : ""}`.trim(),
@@ -167,13 +469,68 @@ export default function TechnicianReportsPage() {
 
   const handleSend = () => {
     if (!selectedReport) return;
-    setShowSendConfirm(false);
-    setSelectedReport(null);
-    toast.success(
-      sendTarget === "admin"
-        ? "Report sent to admin."
-        : "Report sent to client."
-    );
+    const selectedQuotationData =
+      selectedReport.type === "quotation"
+        ? parseQuotationData(selectedReport.description)
+        : null;
+    if (
+      sendTarget === "client" &&
+      selectedReport.type === "quotation" &&
+      selectedReport.status !== "approved"
+    ) {
+      toast.error("You can only send a quotation to client after admin approval.");
+      return;
+    }
+    if (
+      sendTarget === "client" &&
+      selectedReport.type === "quotation" &&
+      !selectedQuotationData?.clientName?.trim()
+    ) {
+      toast.error("This quotation has no selected client.");
+      return;
+    }
+    const run = async () => {
+      if (selectedReport.type === "quotation" && sendTarget === "client") {
+        const bookingId = selectedQuotationData?.bookingId?.trim();
+        const booking = bookingId
+          ? bookings.find((item) => item.id === bookingId)
+          : undefined;
+        const recipientId = booking?.userId?.trim();
+        if (!recipientId) {
+          toast.error("Selected quotation client is not linked to a user account.");
+          return;
+        }
+        try {
+          const response = await fetch("/api/reports/send", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              reportId: selectedReport.id,
+              recipientId,
+            }),
+          });
+          if (!response.ok) {
+            const payload = (await response.json()) as { error?: string };
+            toast.error(payload.error ?? "Failed to send report to client.");
+            return;
+          }
+        } catch {
+          toast.error("Failed to send report to client.");
+          return;
+        }
+      }
+
+      setShowSendConfirm(false);
+      setSelectedReport(null);
+      toast.success(
+        sendTarget === "admin"
+          ? "Report sent to admin."
+          : selectedReport.type === "quotation" && selectedQuotationData?.clientName
+          ? `Report sent to ${selectedQuotationData.clientName}.`
+          : "Report sent to client."
+      );
+    };
+    void run();
   };
 
   const handleDelete = async () => {
@@ -195,8 +552,37 @@ export default function TechnicianReportsPage() {
     }
   };
 
+  const handleDownloadQuotationPdf = async (report: TechReport) => {
+    const qData = parseQuotationData(report.description);
+    if (!qData) {
+      toast.error("Quotation data is incomplete.");
+      return;
+    }
+    try {
+      await downloadQuotationReportPdf({
+        reportId: report.id,
+        submittedAt: report.submittedAt,
+        submittedBy: techProfile?.name || sessionUser.name || "-",
+        amount: report.amount,
+        clientName: qData.clientName,
+        location: qData.location,
+        clientNumber: qData.clientNumber,
+        technician: qData.technician || techProfile?.name || sessionUser.name,
+        materialItems: normalizeQuotationMaterialItems(qData),
+        dpPercent: 50,
+      });
+    } catch {
+      toast.error("Failed to generate quotation PDF.");
+    }
+  };
+
   const pendingCount = reports.filter((r) => r.status === "pending").length;
   const approvedCount = reports.filter((r) => r.status === "approved").length;
+  const canSendSelectedReportToClient =
+    !selectedReport ||
+    selectedReport.type !== "quotation" ||
+    (selectedReport.status === "approved" &&
+      !!parseQuotationData(selectedReport.description)?.clientName?.trim());
 
   return (
     <div className="space-y-6">
@@ -209,15 +595,27 @@ export default function TechnicianReportsPage() {
             {pendingCount} pending, {approvedCount} approved
           </p>
         </div>
-        <Button
-          icon={Plus}
-          onClick={() => {
-            resetForm();
-            setShowCreate(true);
-          }}
-        >
-          Create Report
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            icon={CalendarRange}
+            onClick={() => {
+              resetQuotationForm();
+              setShowQuotation(true);
+            }}
+          >
+            Create Quotation
+          </Button>
+          <Button
+            icon={Plus}
+            onClick={() => {
+              resetForm();
+              setShowCreate(true);
+            }}
+          >
+            Submit Report
+          </Button>
+        </div>
       </div>
 
       {/* Reports List */}
@@ -247,9 +645,15 @@ export default function TechnicianReportsPage() {
                   <span
                     className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${statusColors[report.status]}`}
                   >
-                    {report.status.charAt(0).toUpperCase() +
-                      report.status.slice(1)}
+                    {report.status === "approved"
+                      ? "Admin Approved"
+                      : report.status.charAt(0).toUpperCase() + report.status.slice(1)}
                   </span>
+                  {report.clientApprovalStatus === "approved" && (
+                    <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-medium text-blue-700">
+                      Client Approved
+                    </span>
+                  )}
                 </div>
                 <p className="text-xs text-slate-500 mt-0.5">
                   {typeLabels[report.type]} · {report.projectName}
@@ -266,6 +670,15 @@ export default function TechnicianReportsPage() {
                 >
                   <Eye className="h-4 w-4" />
                 </button>
+                {report.type === "quotation" && (
+                  <button
+                    onClick={() => openEditQuotation(report)}
+                    className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-blue-50 hover:text-blue-600"
+                    title="Edit Quotation"
+                  >
+                    <Pencil className="h-4 w-4" />
+                  </button>
+                )}
                 <button
                   onClick={() => setDeleteTarget(report)}
                   className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-red-50 hover:text-red-600"
@@ -401,12 +814,12 @@ export default function TechnicianReportsPage() {
         title="Confirm Submission"
         size="sm"
       >
-        <div className="space-y-4">
-          <p className="text-sm text-slate-600">
+        <div className="flex flex-col gap-4">
+          <p className="text-sm leading-relaxed text-slate-600">
             Are you sure you want to submit this report? It will be sent to
             admin for review.
           </p>
-          <div className="flex justify-end gap-2 pt-2">
+          <div className="flex flex-wrap justify-end gap-2">
             <Button
               variant="outline"
               type="button"
@@ -415,6 +828,301 @@ export default function TechnicianReportsPage() {
               Cancel
             </Button>
             <Button onClick={handleCreate}>Confirm</Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Quotation Modal (Create / Edit) — plain document */}
+      <Modal
+        isOpen={showQuotation}
+        onClose={() => {
+          setShowQuotation(false);
+          resetQuotationForm();
+        }}
+        title={editingQuotation ? "Edit Quotation" : "Create Quotation"}
+        size="lg"
+      >
+        <div className="space-y-4 pt-2">
+          <div className="mt-1 w-full rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
+            <header className="mb-6 border-b border-slate-200 pb-4">
+              <h2 className="text-xl font-semibold text-slate-900">Quotation</h2>
+              <p className="mt-1 text-sm text-slate-600">
+                Fill in the fields below. Dates and materials can be updated later if the client changes scope or schedule.
+              </p>
+            </header>
+
+            <div className="space-y-5 text-sm">
+                <div>
+                  <p className="font-medium text-slate-700">
+                    Date <span className="text-red-500">*</span>
+                  </p>
+                  <div className="mt-1.5 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <div>
+                      <label className="text-xs text-slate-500">Start</label>
+                      <input
+                        type="date"
+                        value={quotStartDate}
+                        onChange={(e) => setQuotStartDate(e.target.value)}
+                        min={today}
+                        className="mt-0.5 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-slate-900 outline-none focus:border-brand focus:ring-1 focus:ring-brand"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-slate-500">End</label>
+                      <input
+                        type="date"
+                        value={quotEndDate}
+                        onChange={(e) => setQuotEndDate(e.target.value)}
+                        min={quotStartDate || today}
+                        className="mt-0.5 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-slate-900 outline-none focus:border-brand focus:ring-1 focus:ring-brand"
+                      />
+                    </div>
+                  </div>
+                  <p className="mt-2 text-xs leading-relaxed text-slate-500">
+                    {quotStartDate && quotEndDate ? (
+                      <>
+                        <span className="text-slate-600">Period shown: </span>
+                        {formatDate(quotStartDate)}
+                        <span className="mx-1 text-slate-400">to</span>
+                        {formatDate(quotEndDate)}
+                        <span className="text-slate-500">
+                          {" "}
+                          — edit the fields above to change this range anytime before you save.
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        Choose a start and end date above. The line below will show the range; you can change dates here or when editing the quotation later.
+                      </>
+                    )}
+                  </p>
+                </div>
+                <div>
+                  <label className="block font-medium text-slate-700">
+                    Client <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    value={quotBookingId}
+                    onChange={(e) => handleSelectQuotationBooking(e.target.value)}
+                    className="mt-1.5 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-slate-900 outline-none focus:border-brand focus:ring-1 focus:ring-brand"
+                  >
+                    <option value="">— Select completed site inspection booking —</option>
+                    {completedSiteInspectionBookings.map((booking) => {
+                      const clientLabel = booking.clientName?.trim() || "Unnamed client";
+                      return (
+                        <option key={booking.id} value={booking.id}>
+                          {booking.referenceNo} - {clientLabel}
+                        </option>
+                      );
+                    })}
+                    {quotClientName && !quotBookingId &&
+                      !completedSiteInspectionBookings.some(
+                        (booking) =>
+                          (booking.clientName?.trim() || "Unnamed client") === quotClientName
+                      ) && <option value="">{quotClientName}</option>}
+                  </select>
+                  <p className="mt-1.5 text-xs text-slate-500">
+                    Only completed site inspection bookings are available.
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <div>
+                    <label className="block font-medium text-slate-700">Location</label>
+                    <input
+                      type="text"
+                      value={quotLocation}
+                      readOnly
+                      disabled
+                      className="mt-1.5 w-full rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-slate-900 outline-none disabled:cursor-not-allowed disabled:opacity-80"
+                      placeholder="Client Location"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-medium text-slate-700">Number</label>
+                    <input
+                      type="text"
+                      value={quotClientNumber}
+                      readOnly
+                      disabled
+                      className="mt-1.5 w-full rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-slate-900 outline-none disabled:cursor-not-allowed disabled:opacity-80"
+                      placeholder="Client Contact Number"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block font-medium text-slate-700">Technician</label>
+                  <select
+                    value={quotTechnician}
+                    onChange={(e) => setQuotTechnician(e.target.value)}
+                    className="mt-1.5 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-slate-900 outline-none focus:border-brand focus:ring-1 focus:ring-brand"
+                  >
+                    <option value="">— Select technician —</option>
+                    {technicianOptions.map((technician) => (
+                      <option key={technician.id} value={technician.name}>
+                        {technician.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <div className="flex items-center justify-between gap-3">
+                    <label className="block font-medium text-slate-700">
+                      Subject: Items / Materials for <span className="text-red-500">*</span>
+                    </label>
+                    <Button type="button" variant="outline" onClick={addMaterialItem}>
+                      Add Line
+                    </Button>
+                  </div>
+                  <div className="mt-1.5 space-y-2">
+                    <div className="grid grid-cols-12 gap-2 text-xs font-medium text-slate-500">
+                      <p className="col-span-5">Description</p>
+                      <p className="col-span-2">QUANTITY</p>
+                      <p className="col-span-2">AMOUNT</p>
+                      <p className="col-span-2">TOTAL</p>
+                    
+                    </div>
+                    {quotMaterialItems.map((item, index) => (
+                      <div key={index} className="grid grid-cols-12 gap-2">
+                        <input
+                          type="text"
+                          value={item.description}
+                          onChange={(e) =>
+                            updateMaterialItem(index, "description", e.target.value)
+                          }
+                          className="col-span-5 rounded-md border border-slate-200 bg-white px-3 py-2 text-slate-900 outline-none focus:border-brand focus:ring-1 focus:ring-brand"
+                          placeholder="Material description"
+                        />
+                        <div className="col-span-2 flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => updateMaterialItem(index, "qty", item.qty - 1)}
+                            className="h-9 w-9 rounded-md border border-slate-200 text-slate-600 hover:bg-slate-50"
+                          >
+                            -
+                          </button>
+                          <input
+                            type="number"
+                            min="0"
+                            value={item.qty}
+                            onChange={(e) => updateMaterialItem(index, "qty", e.target.value)}
+                            className="w-full rounded-md border border-slate-200 bg-white px-2 py-2 text-center text-slate-900 outline-none focus:border-brand focus:ring-1 focus:ring-brand"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => updateMaterialItem(index, "qty", item.qty + 1)}
+                            className="h-9 w-9 rounded-md border border-slate-200 text-slate-600 hover:bg-slate-50"
+                          >
+                            +
+                          </button>
+                        </div>
+                        <div className="col-span-2 flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => updateMaterialItem(index, "amt", item.amt - 1)}
+                            className="h-9 w-9 rounded-md border border-slate-200 text-slate-600 hover:bg-slate-50"
+                          >
+                            -
+                          </button>
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={item.amt}
+                            onChange={(e) => updateMaterialItem(index, "amt", e.target.value)}
+                            className="w-full rounded-md border border-slate-200 bg-white px-2 py-2 text-center text-slate-900 outline-none focus:border-brand focus:ring-1 focus:ring-brand"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => updateMaterialItem(index, "amt", item.amt + 1)}
+                            className="h-9 w-9 rounded-md border border-slate-200 text-slate-600 hover:bg-slate-50"
+                          >
+                            +
+                          </button>
+                        </div>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={item.total}
+                          onChange={(e) => updateMaterialItem(index, "total", e.target.value)}
+                          className="col-span-2 rounded-md border border-slate-200 bg-white px-2 py-2 text-slate-900 outline-none focus:border-brand focus:ring-1 focus:ring-brand"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => removeMaterialItem(index)}
+                          className="col-span-1 rounded-md border border-slate-200 px-2 py-2 text-xs text-slate-600 hover:bg-slate-50"
+                        >
+                          -
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+
+                </div>
+                <div>
+                  <label className="block font-medium text-slate-700">
+                    Total amount (PHP) <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={quotTotal}
+                    onChange={(e) => setQuotTotal(e.target.value)}
+                    className="mt-1.5 w-full rounded-md border border-slate-200 bg-white px-3 py-2 tabular-nums text-slate-900 outline-none focus:border-brand focus:ring-1 focus:ring-brand"
+                    placeholder="0.00"
+                  />
+                </div>
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2 border-t border-slate-200 pt-4">
+            <Button
+              variant="outline"
+              type="button"
+              onClick={() => {
+                setShowQuotation(false);
+                resetQuotationForm();
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              icon={FileText}
+              onClick={() => setShowQuotConfirm(true)}
+              disabled={!canCreateQuotation}
+            >
+              {editingQuotation ? "Save Changes" : "Submit Quotation"}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Quotation Confirmation */}
+      <Modal
+        isOpen={showQuotConfirm}
+        onClose={() => setShowQuotConfirm(false)}
+        title={editingQuotation ? "Confirm Changes" : "Confirm Quotation"}
+        size="sm"
+        zIndex={60}
+      >
+        <div className="flex flex-col gap-4">
+          <p className="text-sm leading-relaxed text-slate-600">
+            {editingQuotation
+              ? "Are you sure you want to save the changes to this quotation?"
+              : "Are you sure you want to submit this quotation? It will be sent to admin for review."}
+          </p>
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button
+              variant="outline"
+              type="button"
+              onClick={() => setShowQuotConfirm(false)}
+            >
+              Cancel
+            </Button>
+            <Button onClick={handleSaveQuotation}>Confirm</Button>
           </div>
         </div>
       </Modal>
@@ -432,9 +1140,15 @@ export default function TechnicianReportsPage() {
               <span
                 className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${statusColors[viewTarget.status]}`}
               >
-                {viewTarget.status.charAt(0).toUpperCase() +
-                  viewTarget.status.slice(1)}
+                {viewTarget.status === "approved"
+                  ? "Admin Approved"
+                  : viewTarget.status.charAt(0).toUpperCase() + viewTarget.status.slice(1)}
               </span>
+              {viewTarget.clientApprovalStatus === "approved" && (
+                <span className="rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-medium text-blue-700">
+                  Client Approved
+                </span>
+              )}
               <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-600">
                 {typeLabels[viewTarget.type]}
               </span>
@@ -453,7 +1167,43 @@ export default function TechnicianReportsPage() {
                 </span>
               </div>
             </div>
-            {viewTarget.description && (
+            {viewTarget.type === "quotation" && (() => {
+              const qData = parseQuotationData(viewTarget.description);
+              if (!qData) return null;
+              return (
+                <div className="space-y-3 rounded-lg bg-slate-50 p-4">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-slate-500">Client Name</span>
+                    <span className="font-medium text-slate-900">{qData.clientName}</span>
+                  </div>
+                  {viewTarget.amount != null && (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-slate-500">Total Amount</span>
+                      <span className="font-medium text-slate-900">
+                        {new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(viewTarget.amount)}
+                      </span>
+                    </div>
+                  )}
+                  <div className="flex justify-between text-sm">
+                    <span className="text-slate-500">Installation Date</span>
+                    <span className="font-medium text-slate-900">
+                      {formatDate(qData.installationStartDate)} — {formatDate(qData.installationEndDate)}
+                    </span>
+                  </div>
+                  {qData.adminComment && (
+                    <div className="rounded-md border border-red-200 bg-red-50 p-2">
+                      <p className="text-xs font-medium text-red-700">Admin Rejection Note</p>
+                      <p className="text-sm text-red-700">{qData.adminComment}</p>
+                    </div>
+                  )}
+                  <div>
+                    <p className="text-xs font-medium text-slate-500 mb-1">Materials Needed</p>
+                    <p className="text-sm text-slate-700 whitespace-pre-wrap">{qData.materials}</p>
+                  </div>
+                </div>
+              );
+            })()}
+            {(viewTarget.type !== "quotation" || !parseQuotationData(viewTarget.description)) && viewTarget.description && (
               <div>
                 <p className="text-xs font-medium text-slate-500 mb-1">
                   Description
@@ -463,8 +1213,18 @@ export default function TechnicianReportsPage() {
                 </p>
               </div>
             )}
-            <div className="flex justify-end pt-2">
-              <Button variant="outline" onClick={() => setViewTarget(null)}>
+            <div className="flex justify-end gap-2 pt-2">
+              {viewTarget.type === "quotation" && parseQuotationData(viewTarget.description) && (
+                <Button
+                  variant="primary"
+                  onClick={() => {
+                    void handleDownloadQuotationPdf(viewTarget);
+                  }}
+                >
+                  Download PDF
+                </Button>
+              )}
+              <Button variant="danger" onClick={() => setViewTarget(null)}>
                 Close
               </Button>
             </div>
@@ -480,23 +1240,19 @@ export default function TechnicianReportsPage() {
         size="sm"
       >
         {deleteTarget && (
-          <div className="space-y-4">
-            <p className="text-sm text-slate-600">
+          <div className="flex flex-col gap-4">
+            <p className="text-sm leading-relaxed text-slate-600">
               Are you sure you want to delete{" "}
               <span className="font-semibold text-slate-900">
                 &ldquo;{deleteTarget.title}&rdquo;
               </span>
               ? This action cannot be undone.
             </p>
-            <div className="flex justify-end gap-2">
+            <div className="flex flex-wrap justify-end gap-2">
               <Button variant="outline" onClick={() => setDeleteTarget(null)}>
                 Cancel
               </Button>
-              <Button
-                variant="danger"
-                icon={Trash2}
-                onClick={handleDelete}
-              >
+              <Button variant="danger" onClick={handleDelete}>
                 Delete
               </Button>
             </div>
@@ -512,8 +1268,8 @@ export default function TechnicianReportsPage() {
         size="sm"
       >
         {selectedReport && (
-          <div className="space-y-4">
-            <p className="text-sm text-slate-600">
+          <div className="flex flex-col gap-4">
+            <p className="text-sm leading-relaxed text-slate-600">
               Send{" "}
               <span className="font-semibold text-slate-900">
                 &ldquo;{selectedReport.title}&rdquo;
@@ -522,10 +1278,10 @@ export default function TechnicianReportsPage() {
             </p>
             <div className="flex gap-3">
               <label
-                className={`flex-1 cursor-pointer rounded-lg border p-3 text-center text-sm font-medium transition-colors ${
+                className={`flex-1 rounded-lg border p-3 text-center text-sm font-medium transition-colors ${
                   sendTarget === "admin"
                     ? "border-brand bg-brand/5 text-brand"
-                    : "border-slate-200 text-slate-600 hover:bg-slate-50"
+                    : "cursor-pointer border-slate-200 text-slate-600 hover:bg-slate-50"
                 }`}
               >
                 <input
@@ -533,16 +1289,20 @@ export default function TechnicianReportsPage() {
                   name="sendTarget"
                   value="admin"
                   checked={sendTarget === "admin"}
-                  onChange={() => setSendTarget("admin")}
+                  onChange={() => {
+                    setSendTarget("admin");
+                  }}
                   className="sr-only"
                 />
                 Admin
               </label>
               <label
-                className={`flex-1 cursor-pointer rounded-lg border p-3 text-center text-sm font-medium transition-colors ${
-                  sendTarget === "client"
+                className={`flex-1 rounded-lg border p-3 text-center text-sm font-medium transition-colors ${
+                  !canSendSelectedReportToClient
+                    ? "cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400"
+                    : sendTarget === "client"
                     ? "border-brand bg-brand/5 text-brand"
-                    : "border-slate-200 text-slate-600 hover:bg-slate-50"
+                    : "cursor-pointer border-slate-200 text-slate-600 hover:bg-slate-50"
                 }`}
               >
                 <input
@@ -550,13 +1310,22 @@ export default function TechnicianReportsPage() {
                   name="sendTarget"
                   value="client"
                   checked={sendTarget === "client"}
-                  onChange={() => setSendTarget("client")}
+                  onChange={() => {
+                    if (!canSendSelectedReportToClient) return;
+                    setSendTarget("client");
+                  }}
+                  disabled={!canSendSelectedReportToClient}
                   className="sr-only"
                 />
                 Client
               </label>
             </div>
-            <div className="flex justify-end gap-2 pt-2">
+            {!canSendSelectedReportToClient && (
+              <p className="text-xs text-amber-600">
+                Client send is disabled until this quotation is admin approved and has a selected client.
+              </p>
+            )}
+            <div className="flex flex-wrap justify-end gap-2">
               <Button
                 variant="outline"
                 type="button"
@@ -564,7 +1333,7 @@ export default function TechnicianReportsPage() {
               >
                 Cancel
               </Button>
-              <Button icon={Send} onClick={handleSend}>
+              <Button onClick={handleSend}>
                 Send
               </Button>
             </div>
