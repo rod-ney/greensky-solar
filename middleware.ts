@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
+import { checkRateLimit } from "@/lib/rate-limit";
 
 const PUBLIC_PATHS = [
   "/",
@@ -28,11 +29,77 @@ function getHomePathByRole(role: string | undefined): string {
   return "/dashboard";
 }
 
-export function middleware(request: NextRequest) {
+function getClientIp(request: NextRequest): string {
+  const forwarded = request.headers.get("x-forwarded-for");
+  if (forwarded) {
+    const first = forwarded.split(",")[0]?.trim();
+    if (first) return first;
+  }
+  const realIp = request.headers.get("x-real-ip");
+  return realIp || "unknown";
+}
+
+type ApiRatePolicy = {
+  key: string;
+  maxRequests: number;
+  windowSeconds: number;
+};
+
+function getApiRatePolicy(pathname: string, method: string): ApiRatePolicy {
+  const upperMethod = method.toUpperCase();
+
+  if (pathname.startsWith("/api/auth/")) {
+    return { key: "api-auth", maxRequests: 10, windowSeconds: 60 };
+  }
+
+  if (pathname.startsWith("/api/reports") || pathname.startsWith("/api/invoice")) {
+    return { key: "api-heavy", maxRequests: 20, windowSeconds: 60 };
+  }
+
+  if (upperMethod === "POST" || upperMethod === "PUT" || upperMethod === "PATCH" || upperMethod === "DELETE") {
+    return { key: "api-write", maxRequests: 60, windowSeconds: 60 };
+  }
+
+  return { key: "api-read", maxRequests: 180, windowSeconds: 60 };
+}
+
+export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const isLoggedIn = request.cookies.get("gs_auth")?.value === "1";
   const role = request.cookies.get("gs_role")?.value;
   const homePath = getHomePathByRole(role);
+
+  if (pathname.startsWith("/api/")) {
+    const policy = getApiRatePolicy(pathname, request.method);
+    const ip = getClientIp(request);
+    const limitKey = `${policy.key}:${ip}`;
+    const { allowed, remaining } = await checkRateLimit(limitKey, {
+      maxRequests: policy.maxRequests,
+      windowSeconds: policy.windowSeconds,
+      prefix: "middleware",
+    });
+
+    if (!allowed) {
+      return NextResponse.json(
+        {
+          error: "Too many requests. Please try again later.",
+        },
+        {
+          status: 429,
+          headers: {
+            "Retry-After": String(policy.windowSeconds),
+            "X-RateLimit-Limit": String(policy.maxRequests),
+            "X-RateLimit-Remaining": "0",
+          },
+        }
+      );
+    }
+
+    const response = NextResponse.next();
+    response.headers.set("X-RateLimit-Limit", String(policy.maxRequests));
+    response.headers.set("X-RateLimit-Remaining", String(remaining));
+    return response;
+  }
 
   if (!isPublicPath(pathname) && !isLoggedIn) {
     return NextResponse.redirect(new URL("/login", request.url));
