@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { dbQuery } from "@/lib/server/db";
 import { toIsoDateManila, getTodayInManila } from "@/lib/date-utils";
 import type {
@@ -998,10 +999,8 @@ export async function addSavedAddressToDb(
   },
   userId: string
 ): Promise<SavedAddress> {
-  const countResult = await dbQuery<{ count: string }>(
-    "SELECT COUNT(*)::text AS count FROM saved_addresses"
-  );
-  const nextId = `addr-${String(Number(countResult.rows[0]?.count ?? "0") + 1).padStart(3, "0")}`;
+  // Must be unique per row; COUNT(*)+1 collides after deletes or non-sequential seed IDs.
+  const nextId = `addr-${randomUUID()}`;
 
   if (data.isDefault) {
     await dbQuery(

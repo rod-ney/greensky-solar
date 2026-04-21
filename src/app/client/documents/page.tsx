@@ -83,6 +83,7 @@ type QuotationPayload = {
   technician?: string;
   materials?: string;
   materialItems?: QuotationMaterialItem[];
+  clientComment?: string;
 };
 
 function parseQuotationPayload(desc: string): QuotationPayload | null {
@@ -122,6 +123,7 @@ export default function DocumentsPage() {
 
   const [approveTarget, setApproveTarget] = useState<Document | null>(null);
   const [rejectTarget, setRejectTarget] = useState<Document | null>(null);
+  const [rejectComment, setRejectComment] = useState("");
   const [viewTarget, setViewTarget] = useState<Document | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Document | null>(null);
 
@@ -173,7 +175,10 @@ export default function DocumentsPage() {
       const res = await fetch(`/api/client/documents/${rejectTarget.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ approvalStatus: "rejected" }),
+        body: JSON.stringify({
+          approvalStatus: "rejected",
+          rejectionComment: rejectComment.trim() || undefined,
+        }),
       });
       if (!res.ok) {
         toast.error("Failed to reject document.");
@@ -182,6 +187,7 @@ export default function DocumentsPage() {
       const updated = (await res.json()) as Document;
       setDocuments((prev) => prev.map((d) => (d.id === updated.id ? updated : d)));
       setRejectTarget(null);
+      setRejectComment("");
       toast.success("Document rejected.");
     } catch {
       toast.error("Failed to reject document.");
@@ -438,7 +444,10 @@ export default function DocumentsPage() {
                         variant="outline"
                         className="flex-1 text-xs text-red-600 hover:bg-red-50 hover:border-red-200"
                         icon={X}
-                        onClick={() => setRejectTarget(doc)}
+                        onClick={() => {
+                          setRejectTarget(doc);
+                          setRejectComment("");
+                        }}
                       >
                         Reject
                       </Button>
@@ -565,7 +574,10 @@ export default function DocumentsPage() {
                               <Check className="h-3.5 w-3.5" />
                             </button>
                             <button
-                              onClick={() => setRejectTarget(doc)}
+                              onClick={() => {
+                                setRejectTarget(doc);
+                                setRejectComment("");
+                              }}
                               className="flex h-7 w-7 items-center justify-center rounded-lg text-red-500 hover:bg-red-50"
                               title="Reject"
                             >
@@ -715,18 +727,42 @@ export default function DocumentsPage() {
       {/* Reject Confirmation Modal */}
       <Modal
         isOpen={!!rejectTarget}
-        onClose={() => setRejectTarget(null)}
+        onClose={() => {
+          setRejectTarget(null);
+          setRejectComment("");
+        }}
         title="Reject Document"
         size="sm"
       >
         <div className="space-y-4">
+          {rejectTarget?.linkedReportType === "quotation" && (
+            <div>
+              <label className="mb-1.5 block text-xs font-medium text-slate-600">
+                Comment for Admin/Technician (optional)
+              </label>
+              <textarea
+                rows={3}
+                value={rejectComment}
+                onChange={(e) => setRejectComment(e.target.value)}
+                placeholder="Tell us why this quotation is rejected..."
+                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand"
+                maxLength={500}
+              />
+            </div>
+          )}
           <p className="text-sm text-slate-600">
             Are you sure you want to reject{" "}
             <span className="font-semibold text-slate-900">{rejectTarget?.title}</span>? This
             will decline the service and quotation report.
           </p>
           <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={() => setRejectTarget(null)}>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setRejectTarget(null);
+                setRejectComment("");
+              }}
+            >
               Cancel
             </Button>
             <Button variant="danger" onClick={handleReject}>

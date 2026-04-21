@@ -238,13 +238,6 @@ export default function UsersPage() {
         </table>
       </div>
 
-      {/* Auth Ready Notice */}
-      <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-4 text-center">
-        <p className="text-sm text-slate-500">
-          Authentication integration ready — connect your auth provider (NextAuth.js, Clerk, etc.) to enable login and role-based access control.
-        </p>
-      </div>
-
       {/* Add User Modal */}
       <Modal
         isOpen={showAddModal}

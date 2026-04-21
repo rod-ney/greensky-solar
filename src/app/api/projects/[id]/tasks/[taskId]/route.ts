@@ -10,6 +10,18 @@ type RouteContext = {
   params: Promise<{ id: string; taskId: string }>;
 };
 
+function debugLog(payload: {
+  runId: string;
+  hypothesisId: string;
+  location: string;
+  message: string;
+  data: Record<string, unknown>;
+}) {
+  // #region agent log
+  fetch("http://127.0.0.1:7747/ingest/ab001a91-7ef1-4a9f-a005-3fe6f98fe055",{method:"POST",headers:{"Content-Type":"application/json","X-Debug-Session-Id":"2fbc37"},body:JSON.stringify({sessionId:"2fbc37",runId:payload.runId,hypothesisId:payload.hypothesisId,location:payload.location,message:payload.message,data:payload.data,timestamp:Date.now()})}).catch(()=>{});
+  // #endregion
+}
+
 export async function PATCH(request: Request, context: RouteContext) {
   const auth = await requireAdminOrTechnician();
   if (auth instanceof NextResponse) return auth;
@@ -18,6 +30,20 @@ export async function PATCH(request: Request, context: RouteContext) {
   const body = result.data;
   try {
     const { id: projectId, taskId } = await context.params;
+    debugLog({
+      runId: "initial",
+      hypothesisId: "H1",
+      location: "api/projects/[id]/tasks/[taskId]/route.ts:PATCH",
+      message: "Task update request received",
+      data: {
+        role: auth.role,
+        projectId,
+        taskId,
+        hasAssignedTo: body.assignedTo !== undefined,
+        assignedToValue: body.assignedTo ?? null,
+        hasDueDate: body.dueDate !== undefined,
+      },
+    });
 
     if (auth.role === "technician") {
       const technicianId = await getTechnicianIdByUserId(auth.userId);
@@ -31,6 +57,17 @@ export async function PATCH(request: Request, context: RouteContext) {
       }
       const task = project.tasks.find((t) => t.id === taskId);
       if (!task || task.assignedTo !== technicianId) {
+        debugLog({
+          runId: "initial",
+          hypothesisId: "H3",
+          location: "api/projects/[id]/tasks/[taskId]/route.ts:PATCH",
+          message: "Technician authorization rejected",
+          data: {
+            technicianId,
+            taskFound: Boolean(task),
+            taskAssignedTo: task?.assignedTo ?? null,
+          },
+        });
         return NextResponse.json({ error: "Task not found or not assigned to you" }, { status: 403 });
       }
       if (body.assignedTo !== undefined || body.title !== undefined || body.description !== undefined || body.priority !== undefined || body.dueDate !== undefined) {
@@ -48,6 +85,17 @@ export async function PATCH(request: Request, context: RouteContext) {
       priority: body.priority,
       assignedTo: auth.role === "admin" ? body.assignedTo : undefined,
       dueDate: auth.role === "admin" ? body.dueDate : undefined,
+    });
+    debugLog({
+      runId: "initial",
+      hypothesisId: "H2",
+      location: "api/projects/[id]/tasks/[taskId]/route.ts:PATCH",
+      message: "Task update repository returned",
+      data: {
+        updatedFound: Boolean(updated),
+        updatedAssignedTo: updated?.assignedTo ?? null,
+        updatedDueDate: updated?.dueDate ?? null,
+      },
     });
     if (!updated) {
       return NextResponse.json({ error: "Task not found." }, { status: 404 });
@@ -94,6 +142,15 @@ export async function PATCH(request: Request, context: RouteContext) {
     }
     return NextResponse.json(updated);
   } catch (error) {
+    debugLog({
+      runId: "initial",
+      hypothesisId: "H1",
+      location: "api/projects/[id]/tasks/[taskId]/route.ts:PATCH",
+      message: "Task update failed with exception",
+      data: {
+        error: error instanceof Error ? error.message : "Unknown error",
+      },
+    });
     const message = error instanceof Error ? error.message : "Unknown error";
     return NextResponse.json({ error: message }, { status: 500 });
   }

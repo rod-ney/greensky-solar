@@ -92,4 +92,5 @@ export const createDocumentSchema = z.object({
 
 export const updateDocumentSchema = z.object({
   approvalStatus: documentApprovalStatus,
+  rejectionComment: z.string().trim().max(500).optional(),
 });

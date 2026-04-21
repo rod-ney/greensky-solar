@@ -76,19 +76,19 @@ export default function GanttTimeline({ items, title = "Gantt Timeline" }: { ite
               item.status === "completed"
                 ? "bg-emerald-500"
                 : item.status === "cancelled"
-                ? "bg-slate-400"
-                : BAR_COLORS[index % BAR_COLORS.length];
+                  ? "bg-slate-400"
+                  : BAR_COLORS[index % BAR_COLORS.length];
 
             return (
               <div key={item.id} className="grid grid-cols-[190px_1fr] border-b border-slate-300 last:border-b-0">
                 <div className="border-r border-slate-300 px-3 py-2 text-sm text-slate-600">{item.name}</div>
                 <div className="relative h-10 bg-[linear-gradient(to_right,transparent_0%,transparent_8.333%,#d5dbe5_8.333%,#d5dbe5_8.5%,transparent_8.5%,transparent_16.666%,#d5dbe5_16.666%,#d5dbe5_16.833%,transparent_16.833%,transparent_25%,#d5dbe5_25%,#d5dbe5_25.167%,transparent_25.167%,transparent_33.333%,#d5dbe5_33.333%,#d5dbe5_33.5%,transparent_33.5%,transparent_41.666%,#d5dbe5_41.666%,#d5dbe5_41.833%,transparent_41.833%,transparent_50%,#d5dbe5_50%,#d5dbe5_50.167%,transparent_50.167%,transparent_58.333%,#d5dbe5_58.333%,#d5dbe5_58.5%,transparent_58.5%,transparent_66.666%,#d5dbe5_66.666%,#d5dbe5_66.833%,transparent_66.833%,transparent_75%,#d5dbe5_75%,#d5dbe5_75.167%,transparent_75.167%,transparent_83.333%,#d5dbe5_83.333%,#d5dbe5_83.5%,transparent_83.5%,transparent_91.666%,#d5dbe5_91.666%,#d5dbe5_91.833%,transparent_91.833%,transparent_100%)]">
-              <div
+                  <div
                     className={`absolute top-1/2 h-3 -translate-y-1/2 rounded-full ${barColor}`}
                     style={{ left: `${left}%`, width: `${width}%` }}
-              />
-            </div>
-          </div>
+                  />
+                </div>
+              </div>
             );
           })}
         </div>
@@ -96,4 +96,3 @@ export default function GanttTimeline({ items, title = "Gantt Timeline" }: { ite
     </section>
   );
 }
-

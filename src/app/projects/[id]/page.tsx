@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useMemo, useEffect } from "react";
+import { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import {
@@ -12,15 +12,13 @@ import {
   PhilippinePeso,
   Edit2,
   Trash2,
-  CheckCircle2,
-  Clock,
   AlertCircle,
-  Circle,
   List,
   ChartGantt,
   CalendarDays,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   ShieldCheck,
   Package,
   Undo2,
@@ -32,18 +30,65 @@ import ProgressBar from "@/components/ui/ProgressBar";
 import Modal from "@/components/ui/Modal";
 import ConfirmModal from "@/components/ui/ConfirmModal";
 import { formatCurrency, formatCurrencyDecimal, formatDate } from "@/lib/format";
-import { getTodayInManila } from "@/lib/date-utils";
+import {
+  getTodayInManila,
+  maxIsoDate,
+  addDaysToIso,
+  diffCalendarDaysIso,
+  isoDateLocalMidnightMs,
+} from "@/lib/date-utils";
 import { toast } from "@/lib/toast";
 import type { Task, TaskStatus, Priority, ProjectStatus, Project, Technician, InventoryItem, ProjectInventoryItem } from "@/types";
 
-const taskStatusIcons: Record<TaskStatus, React.ReactNode> = {
-  todo: <Circle className="h-4 w-4 text-slate-400" />,
-  in_progress: <Clock className="h-4 w-4 text-blue-500" />,
-  completed: <CheckCircle2 className="h-4 w-4 text-green-500" />,
-  cancelled: <AlertCircle className="h-4 w-4 text-red-500" />,
+const TASK_STATUS_OPTIONS: { value: TaskStatus; label: string }[] = [
+  { value: "todo", label: "To Do" },
+  { value: "in_progress", label: "In Progress" },
+  { value: "completed", label: "Completed" },
+  { value: "cancelled", label: "Cancelled" },
+];
+
+/** Matches StatusBadge task colors for badge-style status picker. */
+const TASK_STATUS_BADGE_SELECT_CLASS: Record<TaskStatus, string> = {
+  todo: "bg-amber-50 text-amber-700 border-amber-200",
+  in_progress: "bg-blue-50 text-blue-700 border-blue-200",
+  completed: "bg-green-50 text-green-700 border-green-200",
+  cancelled: "bg-red-50 text-red-700 border-red-200",
 };
 
+type ClientUserOption = { id: string; name: string; email: string };
+
+/** Clients allowed for warranty on this project: linked userId, else name match to project.client. */
+function getWarrantyEligibleClients(
+  project: Project,
+  clientUsers: ClientUserOption[]
+): ClientUserOption[] {
+  if (project.userId) {
+    const match = clientUsers.find((u) => u.id === project.userId);
+    if (match) return [match];
+    return [
+      {
+        id: project.userId,
+        name: project.client?.trim() || "Linked client account",
+        email: "",
+      },
+    ];
+  }
+  const clientNameNorm = project.client.trim().toLowerCase();
+  if (!clientNameNorm) return [];
+  return clientUsers.filter(
+    (u) => u.name.trim().toLowerCase() === clientNameNorm
+  );
+}
+
 export default function ProjectDetailPage() {
+  const GANTT_WINDOW_DAYS = 7;
+  const DAY_MS = 86400000;
+  const toWeekStartSunday = (valueMs: number) => {
+    const d = new Date(valueMs);
+    d.setHours(0, 0, 0, 0);
+    d.setDate(d.getDate() - d.getDay());
+    return d.getTime();
+  };
   const params = useParams();
   const router = useRouter();
   const [project, setProject] = useState<Project | null>(null);
@@ -66,8 +111,6 @@ export default function ProjectDetailPage() {
           endDate: project.endDate,
           budget: project.budget,
           assignedTechnicians: [...project.assignedTechnicians],
-          progressOverride: project.progress,
-          useManualProgress: false,
         }
       : null
   );
@@ -96,8 +139,6 @@ export default function ProjectDetailPage() {
             endDate: loadedProject.endDate,
             budget: loadedProject.budget,
             assignedTechnicians: [...loadedProject.assignedTechnicians],
-            progressOverride: loadedProject.progress,
-            useManualProgress: false,
           });
         } else {
           setTasks([]);
@@ -118,6 +159,10 @@ export default function ProjectDetailPage() {
     void load();
   }, [params.id]);
 
+  useEffect(() => {
+    setSelectedTaskIds(new Set());
+  }, [params.id]);
+
   // ---- Modal visibility ----
   const [showAddTask, setShowAddTask] = useState(false);
   const [showEditTask, setShowEditTask] = useState(false);
@@ -127,7 +172,11 @@ export default function ProjectDetailPage() {
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [taskFilter, setTaskFilter] = useState<TaskStatus | "all">("all");
   const [taskView, setTaskView] = useState<"list" | "gantt" | "calendar">("list");
-  const [ganttScale, setGanttScale] = useState<"week" | "month">("month");
+  const [selectedTaskIds, setSelectedTaskIds] = useState<Set<string>>(() => new Set());
+  const [bulkTaskStatus, setBulkTaskStatus] = useState<TaskStatus>("completed");
+  const [bulkStatusSaving, setBulkStatusSaving] = useState(false);
+  const [ganttWindowStartMs, setGanttWindowStartMs] = useState<number | null>(null);
+  const previousTaskCountRef = useRef(0);
   const [calendarMonth, setCalendarMonth] = useState(() => {
     const d = new Date();
     return { year: d.getFullYear(), month: d.getMonth() };
@@ -186,118 +235,268 @@ export default function ProjectDetailPage() {
   );
 
   const computedProgress = useMemo(() => {
-    if (tasks.length === 0) return projectData?.progressOverride ?? project?.progress ?? 0;
+    if (tasks.length === 0) return project?.progress ?? 0;
     return Math.round((tasks.filter((t) => t.status === "completed").length / tasks.length) * 100);
-  }, [tasks, project?.progress, projectData?.progressOverride]);
+  }, [tasks, project?.progress]);
 
-  const displayProgress = projectData?.useManualProgress
-    ? projectData.progressOverride
-    : computedProgress;
+  const displayProgress = computedProgress;
 
-  // ---- Gantt / Timeline date range ----
+  const warrantyEligibleClients = useMemo(
+    () => (project ? getWarrantyEligibleClients(project, clientUsers) : []),
+    [project, clientUsers]
+  );
+
+  /** New tasks: due date cannot be before project start or before today (Manila). */
+  const minTaskDueDate = useMemo(() => {
+    const raw = (projectData?.startDate ?? project?.startDate ?? "").slice(0, 10);
+    const today = getTodayInManila();
+    if (!raw || !/^\d{4}-\d{2}-\d{2}$/.test(raw)) return today;
+    return maxIsoDate(raw, today);
+  }, [project?.startDate, projectData?.startDate]);
+
+  const projectStartIso = useMemo(
+    () => (projectData?.startDate ?? project?.startDate ?? "").slice(0, 10),
+    [project?.startDate, projectData?.startDate]
+  );
+
+  const taskProjectDayNumber = useCallback(
+    (dueDate: string) => {
+      const due = dueDate.slice(0, 10);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(projectStartIso) || !/^\d{4}-\d{2}-\d{2}$/.test(due)) return null;
+      return diffCalendarDaysIso(projectStartIso, due) + 1;
+    },
+    [projectStartIso]
+  );
+
+  /** Tasks grouped by scheduled due day (earliest → latest); respects status filter. */
+  const tasksGroupedByDueDay = useMemo(() => {
+    const grouped = new Map<string, Task[]>();
+    filteredTasks.forEach((task) => {
+      const key = task.dueDate.slice(0, 10);
+      const bucket = grouped.get(key) ?? [];
+      bucket.push(task);
+      grouped.set(key, bucket);
+    });
+    return Array.from(grouped.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([dateKey, dayTasks]) => ({
+        dateKey,
+        dayNumber: taskProjectDayNumber(dateKey),
+        tasks: dayTasks.sort((a, b) => a.title.localeCompare(b.title)),
+      }));
+  }, [filteredTasks, taskProjectDayNumber]);
+
+  const visibleListTaskIds = useMemo(
+    () => tasksGroupedByDueDay.flatMap((g) => g.tasks.map((t) => t.id)),
+    [tasksGroupedByDueDay]
+  );
+
+  const ganttTasksOrdered = useMemo(
+    () =>
+      [...filteredTasks].sort(
+        (a, b) => a.dueDate.localeCompare(b.dueDate) || a.title.localeCompare(b.title)
+      ),
+    [filteredTasks]
+  );
+
+  const firstTaskDueMs = useMemo(() => {
+    if (tasks.length === 0) return null;
+    const earliest = [...tasks].sort((a, b) => a.dueDate.localeCompare(b.dueDate))[0];
+    return earliest ? isoDateLocalMidnightMs(earliest.dueDate) : null;
+  }, [tasks]);
+
+  /** Add task: each option is one project day from first schedulable date through project end. */
+  const addTaskScheduleOptions = useMemo(() => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(projectStartIso)) return [];
+    const projEnd = (projectData?.endDate ?? project?.endDate ?? "").slice(0, 10);
+    let last =
+      projEnd && /^\d{4}-\d{2}-\d{2}$/.test(projEnd) ? projEnd : addDaysToIso(minTaskDueDate, 365);
+    last = maxIsoDate(last, minTaskDueDate);
+    const options: { value: string; label: string }[] = [];
+    for (let d = minTaskDueDate; d <= last; d = addDaysToIso(d, 1)) {
+      const dayNum = diffCalendarDaysIso(projectStartIso, d) + 1;
+      options.push({
+        value: d,
+        label: `Day ${dayNum} — ${formatDate(d)}`,
+      });
+      if (options.length > 730) break;
+    }
+    return options;
+  }, [project, projectData, minTaskDueDate, projectStartIso]);
+
+  /** Edit task: full project range (Day 1 … end), plus current due if outside. */
+  const editTaskScheduleOptions = useMemo(() => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(projectStartIso)) return [];
+    const projEnd = (projectData?.endDate ?? project?.endDate ?? "").slice(0, 10);
+    let first = projectStartIso;
+    let last =
+      projEnd && /^\d{4}-\d{2}-\d{2}$/.test(projEnd) ? maxIsoDate(projEnd, first) : addDaysToIso(first, 365);
+    const cur = editDueDate.slice(0, 10);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(cur)) {
+      if (cur < first) first = cur;
+      if (cur > last) last = cur;
+    }
+    const options: { value: string; label: string }[] = [];
+    for (let d = first; d <= last; d = addDaysToIso(d, 1)) {
+      const dayNum = diffCalendarDaysIso(projectStartIso, d) + 1;
+      options.push({
+        value: d,
+        label: `Day ${dayNum} — ${formatDate(d)}`,
+      });
+      if (options.length > 730) break;
+    }
+    return options;
+  }, [project, projectData, projectStartIso, editDueDate]);
+
+  // ---- Gantt / Timeline date range (task bars use scheduled due date only, not createdAt) ----
   const timelineRange = useMemo(() => {
     const start = projectData?.startDate ?? project?.startDate ?? "";
     const end = projectData?.endDate ?? project?.endDate ?? "";
-    let min = start ? new Date(start).getTime() : Number.MAX_SAFE_INTEGER;
-    let max = end ? new Date(end).getTime() : 0;
+    const todayIso = getTodayInManila().slice(0, 10);
+    let min =
+      start && /^\d{4}-\d{2}-\d{2}$/.test(start.slice(0, 10))
+        ? isoDateLocalMidnightMs(start.slice(0, 10))
+        : Number.MAX_SAFE_INTEGER;
+    let max =
+      end && /^\d{4}-\d{2}-\d{2}$/.test(end.slice(0, 10))
+        ? isoDateLocalMidnightMs(end.slice(0, 10))
+        : 0;
     filteredTasks.forEach((t) => {
-      const creation = new Date(t.createdAt).getTime();
-      const due = new Date(t.dueDate).getTime();
-      min = Math.min(min, creation, due);
-      max = Math.max(max, creation, due);
+      const due = isoDateLocalMidnightMs(t.dueDate);
+      min = Math.min(min, due);
+      max = Math.max(max, due);
     });
+    const todayMs = isoDateLocalMidnightMs(todayIso);
+    min = Math.min(min, todayMs);
+    max = Math.max(max, todayMs);
     if (min > max) {
       const today = new Date();
       min = new Date(today.getFullYear(), today.getMonth(), 1).getTime();
       max = new Date(today.getFullYear(), today.getMonth() + 2, 0).getTime();
     }
-    return { start: min, end: max, totalDays: Math.ceil((max - min) / (24 * 60 * 60 * 1000)) || 1 };
+    const endExclusive = max + 86400000;
+    return {
+      start: min,
+      end: endExclusive,
+      totalDays: Math.ceil((endExclusive - min) / 86400000) || 1,
+    };
   }, [filteredTasks, project?.startDate, project?.endDate, projectData?.startDate, projectData?.endDate]);
 
-  const ganttCanvasWidth = useMemo(() => {
-    const pixelsPerDay = ganttScale === "month" ? 10 : 16;
-    const computed = timelineRange.totalDays * pixelsPerDay;
-    return Math.min(2200, Math.max(900, computed));
-  }, [ganttScale, timelineRange.totalDays]);
+  useEffect(() => {
+    const minStart = toWeekStartSunday(timelineRange.start);
+    const maxStart = toWeekStartSunday(Math.max(timelineRange.start, timelineRange.end - DAY_MS));
+    const todayMs = isoDateLocalMidnightMs(getTodayInManila().slice(0, 10));
+    const hasTasksNow = tasks.length > 0;
+    const hadNoTasksBefore = previousTaskCountRef.current === 0;
 
+    setGanttWindowStartMs((prev) => {
+      const shouldResetToFirstTask = hasTasksNow && hadNoTasksBefore;
+      const defaultAnchor = firstTaskDueMs ?? todayMs;
+      const anchor = prev == null || shouldResetToFirstTask ? defaultAnchor : prev;
+      const candidate = toWeekStartSunday(anchor);
+      return Math.max(minStart, Math.min(maxStart, candidate));
+    });
+    previousTaskCountRef.current = tasks.length;
+  }, [timelineRange.start, timelineRange.end, tasks.length, firstTaskDueMs]);
+
+  const visibleTimelineRange = useMemo(() => {
+    const windowMs = GANTT_WINDOW_DAYS * DAY_MS;
+    const minStart = toWeekStartSunday(timelineRange.start);
+    const maxStart = toWeekStartSunday(Math.max(timelineRange.start, timelineRange.end - DAY_MS));
+    const start = Math.max(
+      minStart,
+      Math.min(maxStart, toWeekStartSunday(ganttWindowStartMs ?? timelineRange.start))
+    );
+    const end = start + windowMs;
+    return {
+      start,
+      end,
+      totalDays: GANTT_WINDOW_DAYS,
+    };
+  }, [timelineRange, ganttWindowStartMs]);
+
+  const ganttCanvasWidth = useMemo(() => {
+    // Fixed month+day header (no week toggle)
+    const pixelsPerDay = 14;
+    const computed = visibleTimelineRange.totalDays * pixelsPerDay;
+    return Math.min(2600, Math.max(960, computed));
+  }, [visibleTimelineRange.totalDays]);
+
+  /** One bar = single scheduled day (due date), not createdAt → dueDate. */
   const getTaskBarPosition = useCallback(
     (task: Task) => {
-      const start = new Date(task.createdAt).getTime();
-      const end = new Date(task.dueDate).getTime();
-      const left = ((start - timelineRange.start) / (timelineRange.end - timelineRange.start)) * 100;
-      const width = ((end - start) / (timelineRange.end - timelineRange.start)) * 100;
-      return { left: Math.max(0, left), width: Math.max(2, Math.min(100 - left, width)) };
+      const range = visibleTimelineRange.end - visibleTimelineRange.start;
+      if (range <= 0) return { left: 0, width: 100 };
+      const dayStart = isoDateLocalMidnightMs(task.dueDate);
+      const dayEnd = dayStart + 86400000;
+      if (dayEnd <= visibleTimelineRange.start || dayStart >= visibleTimelineRange.end) {
+        return null;
+      }
+      const dayWidthPct = (86400000 / range) * 100;
+      const left = ((dayStart - visibleTimelineRange.start) / range) * 100;
+      const width = Math.max(dayWidthPct, 0.45);
+      const clampedLeft = Math.max(0, Math.min(100 - width, left));
+      return {
+        left: clampedLeft,
+        width: Math.min(width, 100 - clampedLeft),
+      };
     },
-    [timelineRange]
+    [visibleTimelineRange]
   );
 
-  const formatAxisDate = (ts: number) =>
-    new Date(ts).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "2-digit" });
-
-  // ---- Gantt scale headers: primary (month/week) + secondary (day) ----
+  // ---- Gantt headers: primary (month) + secondary (day) ----
   const ganttHeaders = useMemo(() => {
-    const { start, end } = timelineRange;
+    const { start, end } = visibleTimelineRange;
     const primary: { label: string; left: number; width: number }[] = [];
-    const secondary: { label: string; left: number; width: number }[] = [];
+    const secondary: {
+      label: string;
+      weekday: string;
+      iso: string;
+      isToday: boolean;
+      left: number;
+      width: number;
+    }[] = [];
     const startDate = new Date(start);
     const endDate = new Date(end);
     const total = end - start;
+    const todayIso = getTodayInManila().slice(0, 10);
 
-    if (ganttScale === "month") {
-      let d = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
-      while (d.getTime() <= endDate.getTime()) {
-        const monthStart = d.getTime();
-        d = new Date(d.getFullYear(), d.getMonth() + 1, 0);
-        const monthEnd = Math.min(d.getTime() + 86400000, end);
-        d = new Date(d.getTime() + 86400000);
-        primary.push({
-          label: new Date(monthStart).toLocaleDateString("en-US", { month: "short", year: "2-digit" }),
-          left: ((monthStart - start) / total) * 100,
-          width: ((monthEnd - monthStart) / total) * 100,
-        });
-      }
+    let d = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
+    while (d.getTime() <= endDate.getTime()) {
+      const monthStart = d.getTime();
+      d = new Date(d.getFullYear(), d.getMonth() + 1, 0);
+      const monthEnd = Math.min(d.getTime() + 86400000, end);
+      d = new Date(d.getTime() + 86400000);
+      primary.push({
+        label: new Date(monthStart).toLocaleDateString("en-US", { month: "short", year: "2-digit" }),
+        left: ((monthStart - start) / total) * 100,
+        width: ((monthEnd - monthStart) / total) * 100,
+      });
+    }
 
-      const dayCursor = new Date(startDate);
-      dayCursor.setHours(0, 0, 0, 0);
-      while (dayCursor.getTime() < endDate.getTime()) {
-        const dayStart = dayCursor.getTime();
-        const dayEnd = Math.min(dayStart + 86400000, end);
-        const dayNumber = new Date(dayStart).getDate();
-        const shouldShowDayLabel = dayNumber === 1 || dayNumber % 3 === 0;
-        secondary.push({
-          label: shouldShowDayLabel ? String(dayNumber) : "",
-          left: ((dayStart - start) / total) * 100,
-          width: ((dayEnd - dayStart) / total) * 100,
-        });
-        dayCursor.setDate(dayCursor.getDate() + 1);
-      }
-    } else {
-      const d = new Date(startDate);
-      d.setDate(d.getDate() - d.getDay());
-      while (d.getTime() < endDate.getTime()) {
-        const weekStart = d.getTime();
-        const weekEnd = Math.min(weekStart + 7 * 86400000, end);
-        primary.push({
-          label: new Date(weekStart).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
-          left: ((weekStart - start) / total) * 100,
-          width: ((weekEnd - weekStart) / total) * 100,
-        });
-        for (let i = 0; i < 7; i++) {
-          const dayStart = weekStart + i * 86400000;
-          if (dayStart >= end) break;
-          const dayEnd = Math.min(dayStart + 86400000, end);
-          secondary.push({
-            label: new Date(dayStart).toLocaleDateString("en-US", { weekday: "short" }),
-            left: ((dayStart - start) / total) * 100,
-            width: ((dayEnd - dayStart) / total) * 100,
-          });
-        }
-        d.setDate(d.getDate() + 7);
-      }
+    const dayCursor = new Date(startDate);
+    dayCursor.setHours(0, 0, 0, 0);
+    while (dayCursor.getTime() < endDate.getTime()) {
+      const dayStart = dayCursor.getTime();
+      const dayEnd = Math.min(dayStart + 86400000, end);
+      const iso = new Date(dayStart).toLocaleDateString("en-CA", { timeZone: "Asia/Manila" });
+      const manilaDate = new Date(`${iso}T00:00:00`);
+      const dayNumber = manilaDate.getDate();
+      secondary.push({
+        label: String(dayNumber),
+        weekday: manilaDate
+          .toLocaleDateString("en-US", { weekday: "short", timeZone: "Asia/Manila" })
+          .toUpperCase(),
+        iso,
+        isToday: iso === todayIso,
+        left: ((dayStart - start) / total) * 100,
+        width: ((dayEnd - dayStart) / total) * 100,
+      });
+      dayCursor.setDate(dayCursor.getDate() + 1);
     }
 
     return { primary, secondary };
-  }, [timelineRange, ganttScale]);
+  }, [visibleTimelineRange]);
 
   // ---- Calendar view: days grid + tasks per day ----
   const calendarDays = useMemo(() => {
@@ -315,11 +514,7 @@ export default function ProjectDetailPage() {
   const getTasksForDate = useCallback(
     (d: Date) => {
       const dateStr = d.toLocaleDateString("en-CA", { timeZone: "Asia/Manila" }).slice(0, 10);
-      return filteredTasks.filter((t) => {
-        const start = t.createdAt <= t.dueDate ? t.createdAt : t.dueDate;
-        const end = t.createdAt <= t.dueDate ? t.dueDate : t.createdAt;
-        return dateStr >= start && dateStr <= end;
-      });
+      return filteredTasks.filter((t) => t.dueDate.slice(0, 10) === dateStr);
     },
     [filteredTasks]
   );
@@ -344,6 +539,9 @@ export default function ProjectDetailPage() {
   const handleSaveEdit = useCallback(async () => {
     if (!selectedTask || !editTitle.trim()) return;
     try {
+      // #region agent log
+      fetch("http://127.0.0.1:7747/ingest/ab001a91-7ef1-4a9f-a005-3fe6f98fe055",{method:"POST",headers:{"Content-Type":"application/json","X-Debug-Session-Id":"2fbc37"},body:JSON.stringify({sessionId:"2fbc37",runId:"initial",hypothesisId:"H5",location:"app/projects/[id]/page.tsx:handleSaveEdit",message:"Client sending task edit payload",data:{projectId:selectedTask.projectId,taskId:selectedTask.id,assignedTo:editAssignedTo,dueDate:editDueDate,status:editStatus},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
       const response = await fetch(
         `/api/projects/${selectedTask.projectId}/tasks/${selectedTask.id}`,
         {
@@ -383,6 +581,8 @@ export default function ProjectDetailPage() {
   // Add a new task
   const handleAddTask = useCallback(async () => {
     if (!addTitle.trim() || !project) return;
+    const dueDate =
+      addDueDate && addDueDate >= minTaskDueDate ? addDueDate : minTaskDueDate;
     try {
       const response = await fetch(`/api/projects/${project.id}/tasks`, {
         method: "POST",
@@ -392,7 +592,7 @@ export default function ProjectDetailPage() {
           description: addDescription.trim(),
           priority: addPriority,
           assignedTo: addAssignedTo,
-          dueDate: addDueDate || getTodayInManila(),
+          dueDate,
         }),
       });
       const payload = (await response.json()) as Task | { error?: string };
@@ -417,7 +617,7 @@ export default function ProjectDetailPage() {
     } catch {
       toast.error("Failed to add task.");
     }
-  }, [addTitle, addDescription, addPriority, addAssignedTo, addDueDate, project]);
+  }, [addTitle, addDescription, addPriority, addAssignedTo, addDueDate, project, minTaskDueDate]);
 
   // Open delete confirmation
   const openDeleteConfirm = useCallback((task: Task) => {
@@ -438,6 +638,11 @@ export default function ProjectDetailPage() {
         return;
       }
       setTasks((prev) => prev.filter((t) => t.id !== selectedTask.id));
+      setSelectedTaskIds((prev) => {
+        const next = new Set(prev);
+        next.delete(selectedTask.id);
+        return next;
+      });
       setShowDeleteConfirm(false);
       setSelectedTask(null);
       toast.success("Task deleted.");
@@ -445,6 +650,61 @@ export default function ProjectDetailPage() {
       toast.error("Failed to delete task.");
     }
   }, [selectedTask]);
+
+  const patchTaskStatus = useCallback(
+    async (taskId: string, status: TaskStatus) => {
+      if (!project) return;
+      try {
+        const response = await fetch(`/api/projects/${project.id}/tasks/${taskId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ status }),
+        });
+        const payload = (await response.json()) as Task | { error?: string };
+        if (!response.ok) {
+          toast.error(
+            "error" in payload && payload.error ? payload.error : "Failed to update status."
+          );
+          return;
+        }
+        const updated = payload as Task;
+        setTasks((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
+      } catch {
+        toast.error("Failed to update status.");
+      }
+    },
+    [project]
+  );
+
+  const applyBulkTaskStatus = useCallback(async () => {
+    if (!project || selectedTaskIds.size === 0) return;
+    setBulkStatusSaving(true);
+    const ids = [...selectedTaskIds];
+    let ok = 0;
+    try {
+      for (const taskId of ids) {
+        const response = await fetch(`/api/projects/${project.id}/tasks/${taskId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ status: bulkTaskStatus }),
+        });
+        if (!response.ok) continue;
+        const updated = (await response.json()) as Task;
+        setTasks((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
+        ok++;
+      }
+      if (ok !== ids.length) {
+        toast.error(`Updated ${ok} of ${ids.length} tasks.`);
+      } else {
+        toast.success(`Updated ${ok} task${ok !== 1 ? "s" : ""}.`);
+      }
+      setSelectedTaskIds(new Set());
+    } catch {
+      toast.error("Failed to update tasks.");
+    } finally {
+      setBulkStatusSaving(false);
+    }
+  }, [project, selectedTaskIds, bulkTaskStatus]);
 
   // ---- Inventory handlers ----
   const filteredAvailableInventory = useMemo(() => {
@@ -588,7 +848,13 @@ export default function ProjectDetailPage() {
                       return dte.toISOString().slice(0, 10);
                     })()
                 );
-                setWarrantyUserId(project.userId ?? "");
+                const eligible = getWarrantyEligibleClients(project, clientUsers);
+                const initialUserId =
+                  project.userId ||
+                  (eligible.length === 1
+                    ? eligible[0].id
+                    : eligible[0]?.id ?? "");
+                setWarrantyUserId(initialUserId);
                 setShowWarrantyModal(true);
               }}
             >
@@ -706,7 +972,14 @@ export default function ProjectDetailPage() {
                 <CalendarDays className="h-4 w-4" />
               </button>
             </div>
-            <Button icon={Plus} size="sm" onClick={() => setShowAddTask(true)}>
+            <Button
+              icon={Plus}
+              size="sm"
+              onClick={() => {
+                setAddDueDate(minTaskDueDate);
+                setShowAddTask(true);
+              }}
+            >
               Add Task
             </Button>
           </div>
@@ -734,61 +1007,143 @@ export default function ProjectDetailPage() {
           ))}
         </div>
 
+        {taskView === "list" && selectedTaskIds.size > 0 && (
+          <div className="flex flex-wrap items-center gap-3 border-b border-slate-100 bg-brand/5 px-5 py-2.5">
+            <span className="text-sm font-medium text-slate-800">
+              {selectedTaskIds.size} selected
+            </span>
+            <button
+              type="button"
+              className="text-xs font-medium text-slate-600 underline-offset-2 hover:text-brand hover:underline"
+              onClick={() => setSelectedTaskIds(new Set())}
+            >
+              Clear
+            </button>
+            <button
+              type="button"
+              className="text-xs font-medium text-slate-600 underline-offset-2 hover:text-brand hover:underline"
+              onClick={() => setSelectedTaskIds(new Set(visibleListTaskIds))}
+              disabled={visibleListTaskIds.length === 0}
+            >
+              Select all visible
+            </button>
+            <select
+              value={bulkTaskStatus}
+              onChange={(e) => setBulkTaskStatus(e.target.value as TaskStatus)}
+              className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs outline-none focus:border-brand focus:ring-1 focus:ring-brand"
+              aria-label="Bulk status"
+            >
+              {TASK_STATUS_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+            <Button
+              type="button"
+              size="sm"
+              onClick={() => void applyBulkTaskStatus()}
+              disabled={bulkStatusSaving}
+            >
+              {bulkStatusSaving ? "Applying…" : "Apply status"}
+            </Button>
+          </div>
+        )}
+
         {/* Task Content (List / Gantt / Calendar) */}
         {taskView === "list" && (
-          <div className="divide-y divide-slate-100">
-            {filteredTasks.length === 0 ? (
+          <div>
+            {tasksGroupedByDueDay.length === 0 ? (
               <div className="py-12 text-center text-sm text-slate-500">
                 No tasks found
               </div>
             ) : (
-              filteredTasks.map((task) => (
-                <div
-                  key={task.id}
-                  className="flex items-center gap-4 px-5 py-4 hover:bg-slate-50 transition-colors group"
-                >
-                  <div className="flex-shrink-0">
-                    {taskStatusIcons[task.status]}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <p className="text-sm font-medium text-slate-900 truncate">
-                        {task.title}
-                      </p>
-                    <StatusBadge status={task.priority} />
-                    </div>
-                    <p className="text-xs text-slate-500 mt-0.5 truncate">
-                      {task.description}
-                    </p>
-                  </div>
-                  <div className="hidden sm:flex items-center gap-4 text-xs text-slate-500">
-                    <span className="flex items-center gap-1">
-                      <Users className="h-3.5 w-3.5" />
-                      {task.assignedTo
-                        ? technicians.find((t) => t.id === task.assignedTo)?.name ?? "Unknown"
-                        : "Unassigned"}
-                    </span>
-                    <span className="flex items-center gap-1">
-                      <Calendar className="h-3.5 w-3.5" />
-                      {formatDate(task.dueDate)}
+              tasksGroupedByDueDay.map((group) => (
+                <div key={group.dateKey} className="border-t border-slate-100 first:border-t-0">
+                  <div className="flex flex-wrap items-center gap-2 px-5 py-2.5 text-xs font-semibold text-slate-700">
+                    <Calendar className="h-3.5 w-3.5 shrink-0 text-slate-500" />
+                    <span>Day {group.dayNumber ?? "?"}</span>
+                    <span>{formatDate(group.dateKey)}</span>
+                    <span className="font-normal text-slate-500">
+                      {group.tasks.length} task{group.tasks.length !== 1 ? "s" : ""}
                     </span>
                   </div>
-                  <StatusBadge status={task.status} />
-                  <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button
-                      onClick={() => openEditModal(task)}
-                      className="flex h-7 w-7 items-center justify-center rounded text-slate-400 hover:bg-slate-100 hover:text-slate-600"
-                      title="Edit task"
-                    >
-                      <Edit2 className="h-3.5 w-3.5" />
-                    </button>
-                    <button
-                      onClick={() => openDeleteConfirm(task)}
-                      className="flex h-7 w-7 items-center justify-center rounded text-slate-400 hover:bg-red-50 hover:text-red-500"
-                      title="Delete task"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
+                  <div className="divide-y divide-slate-100">
+                    {group.tasks.map((task) => (
+                      <div
+                        key={task.id}
+                        className="flex items-center gap-3 px-5 py-4 hover:bg-slate-50 transition-colors group"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selectedTaskIds.has(task.id)}
+                          onChange={() =>
+                            setSelectedTaskIds((prev) => {
+                              const next = new Set(prev);
+                              if (next.has(task.id)) next.delete(task.id);
+                              else next.add(task.id);
+                              return next;
+                            })
+                          }
+                          className="h-4 w-4 shrink-0 rounded border-slate-300 text-brand focus:ring-brand"
+                          aria-label={`Select task ${task.title}`}
+                        />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <p className="text-sm font-medium text-slate-900 truncate">{task.title}</p>
+                            <StatusBadge status={task.priority} />
+                          </div>
+                          <p className="text-xs text-slate-500 mt-0.5 truncate">{task.description}</p>
+                        </div>
+                        <div className="hidden sm:flex items-center gap-4 text-xs text-slate-500">
+                          <span className="flex items-center gap-1">
+                            <Users className="h-3.5 w-3.5" />
+                            {task.assignedTo
+                              ? technicians.find((t) => t.id === task.assignedTo)?.name ?? "Unknown"
+                              : "Unassigned"}
+                          </span>
+                        </div>
+                        <div className="relative shrink-0">
+                          <select
+                            value={task.status}
+                            onChange={(e) => {
+                              const v = e.target.value as TaskStatus;
+                              if (v !== task.status) void patchTaskStatus(task.id, v);
+                            }}
+                            className={`appearance-none cursor-pointer rounded-full border py-0.5 pl-2.5 pr-7 text-xs font-medium outline-none transition-shadow focus:ring-2 focus:ring-brand/30 ${TASK_STATUS_BADGE_SELECT_CLASS[task.status]}`}
+                            aria-label={`Status for ${task.title}`}
+                          >
+                            {TASK_STATUS_OPTIONS.map((o) => (
+                              <option key={o.value} value={o.value}>
+                                {o.label}
+                              </option>
+                            ))}
+                          </select>
+                          <ChevronDown
+                            className="pointer-events-none absolute right-1.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 opacity-60"
+                            aria-hidden
+                          />
+                        </div>
+                        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button
+                            type="button"
+                            onClick={() => openEditModal(task)}
+                            className="flex h-7 w-7 items-center justify-center rounded text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                            title="Edit task"
+                          >
+                            <Edit2 className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => openDeleteConfirm(task)}
+                            className="flex h-7 w-7 items-center justify-center rounded text-slate-400 hover:bg-red-50 hover:text-red-500"
+                            title="Delete task"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </div>
               ))
@@ -803,73 +1158,119 @@ export default function ProjectDetailPage() {
                 No tasks found. Add tasks to view the Gantt chart.
               </div>
             ) : (
-              <div className="p-5" style={{ minWidth: `${ganttCanvasWidth + 180}px` }}>
-                {/* Gantt scale toggle + header */}
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex rounded-lg border border-slate-200 bg-white">
-                    <button
-                      onClick={() => setGanttScale("week")}
-                      className={`px-2.5 py-1 text-xs font-medium rounded-l-lg ${
-                        ganttScale === "week" ? "bg-brand text-white" : "text-slate-600 hover:bg-slate-100"
-                      }`}
-                    >
-                      Week
-                    </button>
-                    <button
-                      onClick={() => setGanttScale("month")}
-                      className={`px-2.5 py-1 text-xs font-medium rounded-r-lg border-l border-slate-200 ${
-                        ganttScale === "month" ? "bg-brand text-white" : "text-slate-600 hover:bg-slate-100"
-                      }`}
-                    >
-                      Month
-                    </button>
-                  </div>
-                  <span className="text-xs text-slate-500">
-                    {formatAxisDate(timelineRange.start)} – {formatAxisDate(timelineRange.end)}
-                  </span>
-                </div>
-                <div className="grid gap-2 mb-3" style={{ gridTemplateColumns: "180px 1fr" }}>
-                  <div className="text-xs font-medium text-slate-500 uppercase tracking-wider">Task</div>
-                  <div className="relative h-12 rounded border border-slate-200 bg-slate-50">
-                    {ganttHeaders.primary.map((m, i) => (
-                      <div
-                        key={`primary-${i}`}
-                        className="absolute top-0 flex h-6 items-center justify-center border-r border-slate-200 text-[11px] font-medium text-slate-600 last:border-r-0"
-                        style={{ left: `${m.left}%`, width: `${m.width}%` }}
+              <div className="p-5" style={{ minWidth: `${ganttCanvasWidth + 240}px` }}>
+                <div className="mb-3 grid items-center gap-2" style={{ gridTemplateColumns: "220px 1fr" }}>
+                  <div className="text-lg font-semibold text-slate-900">Tasks</div>
+                  <div className="flex items-center justify-between bg-white px-1 py-1.5">
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        className="inline-flex h-7 w-7 items-center justify-center rounded border border-slate-200 text-slate-500 hover:bg-slate-50"
+                        aria-label="Previous range"
+                        onClick={() =>
+                          setGanttWindowStartMs((prev) =>
+                            Math.max(
+                              toWeekStartSunday(timelineRange.start),
+                              toWeekStartSunday((prev ?? visibleTimelineRange.start) - GANTT_WINDOW_DAYS * DAY_MS)
+                            )
+                          )
+                        }
                       >
-                        {m.label}
-                      </div>
+                        <ChevronLeft className="h-4 w-4" />
+                      </button>
+                      <span className="text-sm font-semibold text-slate-800">
+                        {new Date(visibleTimelineRange.start).toLocaleDateString("en-US", {
+                          month: "short",
+                          day: "numeric",
+                        })}{" "}
+                        -{" "}
+                        {new Date(visibleTimelineRange.end - 86400000).toLocaleDateString("en-US", {
+                          month: "short",
+                          day: "numeric",
+                          year: "numeric",
+                        })}
+                      </span>
+                      <button
+                        type="button"
+                        className="inline-flex h-7 w-7 items-center justify-center rounded border border-slate-200 text-slate-500 hover:bg-slate-50"
+                        aria-label="Next range"
+                        onClick={() =>
+                          setGanttWindowStartMs((prev) => {
+                            const maxStart = toWeekStartSunday(
+                              Math.max(timelineRange.start, timelineRange.end - DAY_MS)
+                            );
+                            return Math.min(
+                              maxStart,
+                              toWeekStartSunday((prev ?? visibleTimelineRange.start) + GANTT_WINDOW_DAYS * DAY_MS)
+                            );
+                          })
+                        }
+                      >
+                        <ChevronRight className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+                {/* Gantt header */}
+                <div className="grid gap-0 mb-0 border-y border-slate-200" style={{ gridTemplateColumns: "220px 1fr" }}>
+                  <div className="flex h-10 select-none items-center px-2.5 text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                    Task
+                  </div>
+                  <div className="relative h-10 border-l border-slate-200 bg-white overflow-hidden">
+                    {ganttHeaders.secondary.map((m, i) => (
+                      <div
+                        key={`hdr-grid-${i}`}
+                        className="pointer-events-none absolute top-0 -bottom-px z-0 w-px bg-slate-200"
+                        style={{ left: `${m.left}%` }}
+                        aria-hidden
+                      />
                     ))}
                     {ganttHeaders.secondary.map((m, i) => (
                       <div
                         key={`secondary-${i}`}
-                        className="absolute top-6 flex h-6 items-center justify-center border-r border-slate-200 text-[10px] text-slate-500 last:border-r-0"
+                        className={`absolute top-0 z-[1] flex h-10 flex-col items-center justify-center border-r border-slate-200 text-[10px] font-semibold tabular-nums text-slate-800 last:border-r-0 ${
+                          i % 2 === 1 ? "bg-slate-50/40" : "bg-white"
+                        }`}
                         style={{ left: `${m.left}%`, width: `${m.width}%` }}
+                        title={`${m.weekday} ${m.label}`}
                       >
-                        {m.label}
+                        <span className="select-none leading-none text-[9px] text-slate-500">{m.weekday}</span>
+                        <span className="mt-0.5 select-none leading-none">{m.label}</span>
                       </div>
                     ))}
+                    {(() => {
+                      const todayCell = ganttHeaders.secondary.find((d) => d.isToday);
+                      if (!todayCell) return null;
+                      return (
+                        <span
+                          className="pointer-events-none absolute top-1 z-[3] rounded bg-rose-500 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-white"
+                          style={{ left: `calc(${todayCell.left}% + 4px)` }}
+                        >
+                          Today
+                        </span>
+                      );
+                    })()}
                   </div>
                 </div>
                 {/* Gantt rows */}
-                <div className="space-y-2">
-                  {filteredTasks.map((task) => {
-                    const { left, width } = getTaskBarPosition(task);
+                <div>
+                  {ganttTasksOrdered.map((task) => {
+                    const barPosition = getTaskBarPosition(task);
                     const barColor =
                       task.status === "completed"
                         ? "bg-green-500"
                         : task.status === "in_progress"
-                        ? "bg-brand"
+                        ? "bg-orange-500"
                         : task.status === "cancelled"
                         ? "bg-red-400"
-                        : "bg-slate-300";
+                        : "bg-amber-400";
                     return (
                       <div
                         key={task.id}
-                        className="grid gap-2 items-center group"
-                        style={{ gridTemplateColumns: "180px 1fr" }}
+                        className="grid items-center border-b border-slate-200 last:border-b-0 group"
+                        style={{ gridTemplateColumns: "220px 1fr" }}
                       >
-                        <div className="flex items-center gap-2 min-w-0">
+                        <div className="flex h-12 items-center gap-2 min-w-0 px-2.5">
                           <span className="text-sm font-medium text-slate-900 truncate" title={task.title}>
                             {task.title}
                           </span>
@@ -890,15 +1291,35 @@ export default function ProjectDetailPage() {
                             </button>
                           </div>
                         </div>
-                        <div className="relative h-8 rounded bg-slate-100 overflow-hidden">
+                        <div className="relative h-12 border-l border-slate-200 bg-white overflow-hidden">
+                          {ganttHeaders.secondary.map((m, i) => (
+                            <div
+                              key={`row-grid-${task.id}-${i}`}
+                              className={`pointer-events-none absolute -top-px -bottom-px z-0 w-px ${
+                                                                                                                                                                                                                                                                                                                                                i % 2 === 0 ? "bg-slate-200" : "bg-slate-200"
+                              }`}
+                              style={{ left: `${m.left}%` }}
+                              aria-hidden
+                            />
+                          ))}
                           <div
-                            className={`absolute top-1 bottom-1 rounded ${barColor} min-w-[4px]`}
-                            style={{
-                              left: `${left}%`,
-                              width: `${width}%`,
-                            }}
-                            title={`${formatDate(task.createdAt)} – ${formatDate(task.dueDate)}`}
-                          />
+                            className="contents"
+                          >
+                            {barPosition && (
+                              <div
+                                className={`absolute top-3.5 bottom-3.5 z-[2] rounded-md ${barColor} min-w-[4px] opacity-30`}
+                                style={{
+                                  left: `${barPosition.left}%`,
+                                  width: `${barPosition.width}%`,
+                                }}
+                                title={`Scheduled: ${formatDate(task.dueDate)}${
+                                  taskProjectDayNumber(task.dueDate)
+                                    ? ` (Day ${taskProjectDayNumber(task.dueDate)})`
+                                    : ""
+                                }`}
+                              />
+                            )}
+                          </div>
                         </div>
                       </div>
                     );
@@ -988,16 +1409,20 @@ export default function ProjectDetailPage() {
                           task.status === "completed"
                             ? "bg-green-500"
                             : task.status === "in_progress"
-                            ? "bg-brand"
+                            ? "bg-orange-500"
                         : task.status === "cancelled"
                             ? "bg-red-400"
-                            : "bg-slate-400";
+                            : "bg-amber-400";
                         return (
                           <button
                             key={task.id}
                             onClick={() => openEditModal(task)}
                             className={`w-full text-left px-1.5 py-1 rounded text-[10px] font-medium text-white truncate block ${barColor} hover:opacity-90 shadow-sm border border-white/40`}
-                            title={`${task.title} (${formatDate(task.createdAt)} – ${formatDate(task.dueDate)})`}
+                            title={`${task.title} — ${formatDate(task.dueDate)}${
+                              taskProjectDayNumber(task.dueDate)
+                                ? ` (Day ${taskProjectDayNumber(task.dueDate)})`
+                                : ""
+                            }`}
                           >
                             {task.title}
                           </button>
@@ -1012,35 +1437,59 @@ export default function ProjectDetailPage() {
         )}
       </div>
 
-      {/* Timeline / Progress Indicator (shown in list view only) */}
+      {/* Timeline by scheduled day (list view only); matches filtered tasks */}
       {taskView === "list" && (
       <div className="rounded-xl border border-slate-200 bg-white p-5">
         <h2 className="text-base font-semibold text-slate-900 mb-4">Timeline</h2>
         {tasks.length === 0 ? (
           <p className="text-sm text-slate-500 text-center py-6">No tasks yet. Add a task above to see the timeline.</p>
+        ) : tasksGroupedByDueDay.length === 0 ? (
+          <p className="text-sm text-slate-500 text-center py-6">No tasks match the current filter.</p>
         ) : (
-          <div className="relative pl-6">
-            <div className="absolute left-[11px] top-0 bottom-0 w-0.5 bg-slate-200" />
-            {tasks.map((task) => (
-              <div key={task.id} className="relative mb-6 last:mb-0">
-                <div
-                  className={`absolute left-[-17px] top-1 h-3 w-3 rounded-full border-2 ${
-                    task.status === "completed"
-                      ? "border-green-500 bg-green-500"
-                      : task.status === "in_progress"
-                      ? "border-blue-500 bg-blue-500"
-                      : "border-slate-300 bg-white"
-                  }`}
-                />
-                <div>
-                  <div className="flex items-center gap-2">
-                    <p className="text-sm font-medium text-slate-900">{task.title}</p>
-                    <StatusBadge status={task.status} />
-                  </div>
-                  <p className="text-xs text-slate-500 mt-0.5">
-                    Due: {formatDate(task.dueDate)} · Assigned to:{" "}
-                    {task.assignedTo ? (technicians.find((t) => t.id === task.assignedTo)?.name ?? "Unknown") : "Unassigned"}
-                  </p>
+          <div className="space-y-4">
+            {tasksGroupedByDueDay.map((group) => (
+              <div key={group.dateKey} className="rounded-xl border border-slate-100 p-4">
+                <p className="text-sm font-semibold text-slate-900">
+                  Day {group.dayNumber ?? "?"}{" "}
+                  {new Date(`${group.dateKey}T12:00:00`).toLocaleDateString("en-US", {
+                    month: "long",
+                    day: "numeric",
+                    year: "numeric",
+                  })}
+                  <span className="ml-2 text-xs font-normal text-slate-500">
+                    {group.tasks.length} task{group.tasks.length !== 1 ? "s" : ""}
+                  </span>
+                </p>
+                <div className="relative mt-3 space-y-3 pl-6">
+                  <div className="absolute left-[11px] top-0 bottom-2 w-0.5 bg-slate-200" />
+                  {group.tasks.map((task) => (
+                    <div key={task.id} className="relative">
+                      <div
+                        className={`absolute left-[-17px] top-1.5 h-3 w-3 rounded-full border-2 ${
+                          task.status === "completed"
+                            ? "border-green-500 bg-green-500"
+                            : task.status === "in_progress"
+                            ? "border-orange-500 bg-orange-500"
+                            : task.status === "cancelled"
+                            ? "border-red-400 bg-red-400"
+                            : "border-amber-500 bg-amber-500"
+                        }`}
+                      />
+                      <div className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 shadow-sm">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="text-sm font-medium text-slate-900">{task.title}</p>
+                          <StatusBadge status={task.status} />
+                          <StatusBadge status={task.priority} />
+                        </div>
+                        <p className="text-xs text-slate-500 mt-1">
+                          Assigned to:{" "}
+                          {task.assignedTo
+                            ? technicians.find((t) => t.id === task.assignedTo)?.name ?? "Unknown"
+                            : "Unassigned"}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
             ))}
@@ -1395,14 +1844,37 @@ export default function ProjectDetailPage() {
           </div>
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">
-              Due Date
+              Scheduled project day
             </label>
-            <input
-              type="date"
-              value={addDueDate}
-              onChange={(e) => setAddDueDate(e.target.value)}
-              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand"
-            />
+            <p className="text-xs text-slate-500 mb-1">
+              Day 1 is the first day of the project
+              {projectStartIso ? ` (${formatDate(projectStartIso)})` : ""}. New tasks cannot be scheduled before{" "}
+              {formatDate(minTaskDueDate)}.
+            </p>
+            {addTaskScheduleOptions.length > 0 ? (
+              <select
+                value={addDueDate && addTaskScheduleOptions.some((o) => o.value === addDueDate) ? addDueDate : minTaskDueDate}
+                onChange={(e) => setAddDueDate(e.target.value)}
+                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand"
+              >
+                {addTaskScheduleOptions.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <input
+                type="date"
+                min={minTaskDueDate}
+                value={addDueDate}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setAddDueDate(v && v >= minTaskDueDate ? v : minTaskDueDate);
+                }}
+                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand"
+              />
+            )}
           </div>
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="outline" type="button" onClick={() => setShowAddTask(false)}>
@@ -1508,9 +1980,9 @@ export default function ProjectDetailPage() {
                 </select>
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">
+            <div className="grid grid-cols-2 gap-4 items-start">
+              <div className="flex min-w-0 flex-col">
+                <label className="mb-1 block min-h-[1.25rem] text-sm font-medium text-slate-700">
                   Assign To
                 </label>
                 <select
@@ -1526,16 +1998,34 @@ export default function ProjectDetailPage() {
                   ))}
                 </select>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">
-                  Due Date
+              <div className="flex min-w-0 flex-col">
+                <label className="mb-1 block min-h-[1.25rem] text-sm font-medium text-slate-700">
+                  Scheduled
                 </label>
-                <input
-                  type="date"
-                  value={editDueDate}
-                  onChange={(e) => setEditDueDate(e.target.value)}
-                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand"
-                />
+                {editTaskScheduleOptions.length > 0 ? (
+                  <select
+                    value={
+                      editTaskScheduleOptions.some((o) => o.value === editDueDate.slice(0, 10))
+                        ? editDueDate.slice(0, 10)
+                        : editTaskScheduleOptions[0]?.value ?? ""
+                    }
+                    onChange={(e) => setEditDueDate(e.target.value)}
+                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand"
+                  >
+                    {editTaskScheduleOptions.map((o) => (
+                      <option key={o.value} value={o.value}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    type="date"
+                    value={editDueDate}
+                    onChange={(e) => setEditDueDate(e.target.value)}
+                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand"
+                  />
+                )}
               </div>
             </div>
             <div className="flex justify-end gap-2 pt-2">
@@ -1561,15 +2051,29 @@ export default function ProjectDetailPage() {
         onClose={() => setShowWarrantyConfirm(false)}
         onConfirm={async () => {
           if (!project || !warrantyStartDate || !warrantyEndDate) return;
+          const eligible = getWarrantyEligibleClients(project, clientUsers);
+          const resolvedUserId =
+            project.userId ??
+            (eligible.length === 1
+              ? eligible[0].id
+              : eligible.find((c) => c.id === warrantyUserId)?.id);
+          if (eligible.length > 1 && !resolvedUserId) {
+            toast.error("Select which client account to use for warranty.");
+            setShowWarrantyConfirm(false);
+            return;
+          }
           try {
+            const patch: Record<string, string> = {
+              warrantyStartDate,
+              warrantyEndDate,
+            };
+            if (resolvedUserId) {
+              patch.userId = resolvedUserId;
+            }
             const response = await fetch(`/api/projects/${project.id}`, {
               method: "PATCH",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                warrantyStartDate: warrantyStartDate,
-                warrantyEndDate: warrantyEndDate,
-                userId: warrantyUserId || null,
-              }),
+              body: JSON.stringify(patch),
             });
             const payload = (await response.json()) as Project | { error?: string };
             if (!response.ok) {
@@ -1605,6 +2109,10 @@ export default function ProjectDetailPage() {
               toast.error("Warranty start and end dates are required.");
               return;
             }
+            if (warrantyEligibleClients.length > 1 && !warrantyUserId) {
+              toast.error("Select which client account to use for warranty.");
+              return;
+            }
             setShowWarrantyConfirm(true);
           }}
         >
@@ -1632,28 +2140,51 @@ export default function ProjectDetailPage() {
               required
             />
           </div>
-          {clientUsers.length > 0 && (
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">
-                Client User (for warranty portal)
-              </label>
-              <select
-                value={warrantyUserId}
-                onChange={(e) => setWarrantyUserId(e.target.value)}
-                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand"
-              >
-                <option value="">— None —</option>
-                {clientUsers.map((u) => (
-                  <option key={u.id} value={u.id}>
-                    {u.name} ({u.email})
-                  </option>
-                ))}
-              </select>
-              <p className="mt-0.5 text-xs text-slate-500">
-                Assign this project to a client account so they can see it in their warranty page
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">
+              Client User (for warranty portal)
+            </label>
+            {warrantyEligibleClients.length === 0 ? (
+              <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                No client account is linked to this project. Link a client when creating the project
+                (from an approved quotation) or ensure the project client name matches a client user
+                before assigning warranty access.
               </p>
-            </div>
-          )}
+            ) : warrantyEligibleClients.length === 1 ? (
+              <>
+                <input
+                  type="text"
+                  readOnly
+                  disabled
+                  value={
+                    warrantyEligibleClients[0].email
+                      ? `${warrantyEligibleClients[0].name} (${warrantyEligibleClients[0].email})`
+                      : warrantyEligibleClients[0].name
+                  }
+                  className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 outline-none disabled:cursor-not-allowed disabled:opacity-90"
+                />
+              </>
+            ) : (
+              <>
+                <select
+                  value={warrantyUserId}
+                  onChange={(e) => setWarrantyUserId(e.target.value)}
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand"
+                >
+                  <option value="">— Select client —</option>
+                  {warrantyEligibleClients.map((u) => (
+                    <option key={u.id} value={u.id}>
+                      {u.name}
+                      {u.email ? ` (${u.email})` : ""}
+                    </option>
+                  ))}
+                </select>
+                <p className="mt-0.5 text-xs text-slate-500">
+                  Only clients that match this project are listed.
+                </p>
+              </>
+            )}
+          </div>
           <div className="flex justify-end gap-2 pt-2">
             <Button
               variant="outline"
@@ -1674,9 +2205,7 @@ export default function ProjectDetailPage() {
         onConfirm={async () => {
           if (!projectData || !project) return;
           try {
-            const progressToSave = projectData.useManualProgress
-              ? projectData.progressOverride
-              : computedProgress;
+            const progressToSave = computedProgress;
             const response = await fetch(`/api/projects/${project.id}`, {
               method: "PATCH",
               headers: { "Content-Type": "application/json" },
@@ -1714,8 +2243,6 @@ export default function ProjectDetailPage() {
               endDate: updated.endDate,
               budget: updated.budget,
               assignedTechnicians: [...updated.assignedTechnicians],
-              progressOverride: updated.progress,
-              useManualProgress: false,
             });
             setShowEditProject(false);
             setShowEditProjectConfirm(false);
@@ -1916,48 +2443,6 @@ export default function ProjectDetailPage() {
                   })}
                 </div>
               </div>
-            </div>
-            <div>
-              <label className="flex items-center gap-2 text-xs font-medium text-slate-600 mb-1">
-                <input
-                  type="checkbox"
-                  checked={projectData.useManualProgress}
-                  onChange={(e) =>
-                    setProjectData((p) =>
-                      p ? { ...p, useManualProgress: e.target.checked } : null
-                    )
-                  }
-                  className="rounded border-slate-300"
-                />
-                Use manual progress
-              </label>
-              {projectData.useManualProgress && (
-                <div className="space-y-1.5">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-slate-500">Progress</span>
-                    <span className="font-semibold text-brand">
-                      {projectData.progressOverride}%
-                    </span>
-                  </div>
-                  <input
-                    type="range"
-                    min={0}
-                    max={100}
-                    value={projectData.progressOverride}
-                    onChange={(e) =>
-                      setProjectData((p) =>
-                        p ? { ...p, progressOverride: Number(e.target.value) } : null
-                      )
-                    }
-                    className="w-full h-2 rounded-lg appearance-none bg-slate-200 accent-brand"
-                  />
-                </div>
-              )}
-              {!projectData.useManualProgress && (
-                <p className="text-xs text-slate-500">
-                  Progress is auto-calculated from completed tasks ({computedProgress}%)
-                </p>
-              )}
             </div>
             </div>
             <div className="flex justify-end gap-2 pt-4 mt-4 border-t border-slate-200 flex-shrink-0">

@@ -1,7 +1,18 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Search, Edit2, Trash2, Filter, CalendarDays, Clock, Navigation, Eye } from "lucide-react";
+import {
+  Search,
+  Edit2,
+  Trash2,
+  Filter,
+  CalendarDays,
+  Clock,
+  Navigation,
+  Eye,
+  Zap,
+  Receipt,
+} from "lucide-react";
 import StatusBadge from "@/components/ui/StatusBadge";
 import Modal from "@/components/ui/Modal";
 import ConfirmModal from "@/components/ui/ConfirmModal";
@@ -537,7 +548,7 @@ export default function BookingsPage() {
         isOpen={!!viewTarget}
         onClose={() => setViewTarget(null)}
         title="Booking Details"
-        size="md"
+        size="lg"
       >
         {viewTarget && (
           <div className="space-y-4">
@@ -555,32 +566,76 @@ export default function BookingsPage() {
             </div>
 
             <div className="grid grid-cols-2 gap-3 text-sm">
-              <div>
+              <div className="rounded-lg border border-slate-200 bg-white p-3">
                 <p className="text-xs text-slate-500">Service</p>
-                <p className="font-medium text-slate-900">{SERVICE_LABELS[viewTarget.serviceType]}</p>
+                <p className="mt-0.5 font-medium text-slate-900">
+                  {SERVICE_LABELS[viewTarget.serviceType]}
+                </p>
               </div>
-              <div>
+              <div className="rounded-lg border border-slate-200 bg-white p-3">
                 <p className="text-xs text-slate-500">Amount</p>
-                <p className="font-medium text-slate-900">
+                <p className="mt-0.5 font-medium text-slate-900">
                   {viewTarget.amount > 0 ? formatCurrency(viewTarget.amount) : "—"}
                 </p>
               </div>
-              <div>
+              <div className="rounded-lg border border-slate-200 bg-white p-3">
                 <p className="text-xs text-slate-500">Start – end</p>
-                <p className="font-medium text-slate-900">
+                <p className="mt-0.5 font-medium text-slate-900">
                   {formatBookingSchedule(viewTarget.date, viewTarget.endDate)}
                 </p>
               </div>
-              <div>
+              <div className="rounded-lg border border-slate-200 bg-white p-3">
                 <p className="text-xs text-slate-500">Time</p>
-                <p className="font-medium text-slate-900">{viewTarget.time}</p>
+                <p className="mt-0.5 font-medium text-slate-900">{viewTarget.time}</p>
               </div>
             </div>
 
-            <div>
+            <div className="rounded-lg border border-slate-200 bg-white p-3">
               <p className="text-xs text-slate-500">Location</p>
-              <p className="text-sm text-slate-700 break-words">{viewTarget.address || "—"}</p>
+              <p className="mt-0.5 text-sm text-slate-700 break-words">
+                {viewTarget.address || "—"}
+              </p>
             </div>
+
+            {viewTarget.addressId != null && (
+              <div className="rounded-lg border border-slate-200 bg-white p-4 space-y-4">
+                <div>
+                  <h4 className="text-xs font-semibold text-slate-700 mb-2 flex items-center gap-1.5">
+                    <Receipt className="h-3.5 w-3.5 text-blue-500" />
+                    Average monthly Meralco bill
+                  </h4>
+                  <div className="rounded-lg border border-slate-100 bg-slate-50/80 px-3 py-2.5 flex items-center justify-between">
+                    <span className="text-sm font-bold text-slate-900">
+                      {formatCurrency(viewTarget.addressMonthlyBill ?? 0)}
+                    </span>
+                    <span className="text-[10px] text-slate-400">per month</span>
+                  </div>
+                </div>
+                <div>
+                  <h4 className="text-xs font-semibold text-slate-700 mb-2 flex items-center gap-1.5">
+                    <Zap className="h-3.5 w-3.5 text-amber-500" />
+                    Household appliances
+                  </h4>
+                  {viewTarget.addressAppliances && viewTarget.addressAppliances.length > 0 ? (
+                    <ul className="space-y-1.5">
+                      {viewTarget.addressAppliances.map((app) => (
+                        <li
+                          key={app.id}
+                          className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2 text-xs"
+                        >
+                          <span className="font-medium text-slate-800">{app.name}</span>
+                          <span className="text-[10px] text-slate-500">Qty: {app.quantity}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="text-xs text-slate-500 rounded-lg bg-slate-50 px-3 py-2">
+                      No appliances on file for this address.
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
 
             <div>
               <p className="text-xs text-slate-500">Notes</p>

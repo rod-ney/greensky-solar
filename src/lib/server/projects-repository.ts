@@ -33,6 +33,18 @@ type TaskRow = {
   created_at: string | Date;
 };
 
+function debugLog(payload: {
+  runId: string;
+  hypothesisId: string;
+  location: string;
+  message: string;
+  data: Record<string, unknown>;
+}) {
+  // #region agent log
+  fetch("http://127.0.0.1:7747/ingest/ab001a91-7ef1-4a9f-a005-3fe6f98fe055",{method:"POST",headers:{"Content-Type":"application/json","X-Debug-Session-Id":"2fbc37"},body:JSON.stringify({sessionId:"2fbc37",runId:payload.runId,hypothesisId:payload.hypothesisId,location:payload.location,message:payload.message,data:payload.data,timestamp:Date.now()})}).catch(()=>{});
+  // #endregion
+}
+
 function mapTask(row: TaskRow): Task {
   return {
     id: row.id,
@@ -393,6 +405,19 @@ export async function updateTaskInDb(
     dueDate?: string;
   }
 ): Promise<Task | null> {
+  debugLog({
+    runId: "initial",
+    hypothesisId: "H1",
+    location: "lib/server/projects-repository.ts:updateTaskInDb",
+    message: "Preparing task update query",
+    data: {
+      taskId,
+      assignedToRaw: data.assignedTo ?? null,
+      assignedToRawType: typeof data.assignedTo,
+      dueDateRaw: data.dueDate ?? null,
+      statusRaw: data.status ?? null,
+    },
+  });
   const result = await dbQuery<TaskRow>(
     `UPDATE tasks
      SET
@@ -415,6 +440,17 @@ export async function updateTaskInDb(
     ]
   );
   const row = result.rows[0];
+  debugLog({
+    runId: "initial",
+    hypothesisId: "H4",
+    location: "lib/server/projects-repository.ts:updateTaskInDb",
+    message: "Task update query completed",
+    data: {
+      returnedRow: Boolean(row),
+      rowAssignedTo: row?.assigned_to ?? null,
+      rowDueDate: row ? toIsoDateManila(row.due_date) : null,
+    },
+  });
   if (!row) return null;
 
   const assignedTo = data.assignedTo ?? row.assigned_to;

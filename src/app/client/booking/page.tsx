@@ -54,6 +54,17 @@ const taskStatusIcons: Record<ClientTask["status"], React.ReactNode> = {
   cancelled: <XCircle className="h-3.5 w-3.5 text-red-400" />,
 };
 
+/** Reschedule + cancel booking modals use the same reason list */
+const BOOKING_EDIT_REASONS = [
+  { value: "", label: "Select reason" },
+  { value: "schedule_conflict", label: "Schedule conflict" },
+  { value: "travel_plans", label: "Travel plans" },
+  { value: "weather_concerns", label: "Weather concerns" },
+  { value: "family_emergency", label: "Family emergency" },
+  { value: "work_commitment", label: "Work commitment" },
+  { value: "other", label: "Other" },
+] as const;
+
 export default function BookingPage() {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [availableTimeSlots, setAvailableTimeSlots] = useState<string[]>([]);
@@ -98,6 +109,9 @@ export default function BookingPage() {
   const [rescheduleReasonOther, setRescheduleReasonOther] = useState("");
   const [showRescheduleConfirm, setShowRescheduleConfirm] = useState(false);
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
+  const [showCancelFinalConfirm, setShowCancelFinalConfirm] = useState(false);
+  const [cancelReason, setCancelReason] = useState("");
+  const [cancelReasonOther, setCancelReasonOther] = useState("");
 
   // Fetch linked project detail when a booking is selected
   const fetchProjectDetail = useCallback(async (projectId: string) => {
@@ -185,6 +199,8 @@ export default function BookingPage() {
     setRescheduleTime(bk.time);
     setRescheduleReason("");
     setRescheduleReasonOther("");
+    setCancelReason("");
+    setCancelReasonOther("");
   };
 
   const closeEditModal = () => {
@@ -192,12 +208,20 @@ export default function BookingPage() {
     setEditMode("menu");
     setRescheduleReason("");
     setRescheduleReasonOther("");
+    setCancelReason("");
+    setCancelReasonOther("");
     setShowRescheduleConfirm(false);
     setShowCancelConfirm(false);
+    setShowCancelFinalConfirm(false);
   };
 
   const handleRescheduleConfirm = () => {
     if (!editBooking || !rescheduleDate || !rescheduleTime) return;
+    if (editBooking.status === "cancelled") {
+      toast.error("This booking is already cancelled and can no longer be changed.");
+      closeEditModal();
+      return;
+    }
     const run = async () => {
       try {
         const response = await fetch(`/api/client/bookings/${editBooking.id}`, {
@@ -227,19 +251,51 @@ export default function BookingPage() {
     void run();
   };
 
-  const handleCancelConfirm = () => {
-    if (!editBooking) return;
-    if (editBooking.status === "completed" || editBooking.status === "in_progress") {
-      toast.error("This booking can no longer be cancelled.");
-      setShowCancelConfirm(false);
+  const canConfirmCancel =
+    Boolean(cancelReason) && (cancelReason !== "other" || Boolean(cancelReasonOther.trim()));
+
+  const handleCancelContinueToConfirm = () => {
+    if (!canConfirmCancel) {
+      toast.error("Please select a cancellation reason.");
       return;
     }
+    setShowCancelFinalConfirm(true);
+  };
+
+  const handleCancelConfirm = () => {
+    if (!editBooking) return;
+    if (
+      editBooking.status === "completed" ||
+      editBooking.status === "in_progress" ||
+      editBooking.status === "cancelled"
+    ) {
+      toast.error("This booking can no longer be cancelled.");
+      setShowCancelConfirm(false);
+      setShowCancelFinalConfirm(false);
+      return;
+    }
+    if (!cancelReason || (cancelReason === "other" && !cancelReasonOther.trim())) {
+      toast.error("Please select a cancellation reason.");
+      setShowCancelFinalConfirm(false);
+      return;
+    }
+    const reasonLabel =
+      cancelReason === "other"
+        ? cancelReasonOther.trim()
+        : BOOKING_EDIT_REASONS.find((r) => r.value === cancelReason)?.label ?? cancelReason;
+    const cancellationLine = `Cancellation reason: ${reasonLabel}`;
+    const prior = editBooking.notes?.trim() ?? "";
+    const mergedNotes = prior ? `${prior}\n\n${cancellationLine}` : cancellationLine;
+
     const run = async () => {
       try {
         const response = await fetch(`/api/client/bookings/${editBooking.id}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ status: "cancelled" as BookingStatus }),
+          body: JSON.stringify({
+            status: "cancelled" as BookingStatus,
+            notes: mergedNotes,
+          }),
         });
         const payload = (await response.json()) as Booking | { error?: string };
         if (!response.ok) {
@@ -278,15 +334,6 @@ export default function BookingPage() {
     }
   };
 
-  const rescheduleReasons = [
-    { value: "", label: "Select reason" },
-    { value: "schedule_conflict", label: "Schedule conflict" },
-    { value: "travel_plans", label: "Travel plans" },
-    { value: "weather_concerns", label: "Weather concerns" },
-    { value: "family_emergency", label: "Family emergency" },
-    { value: "work_commitment", label: "Work commitment" },
-    { value: "other", label: "Other" },
-  ];
   const canReschedule =
     rescheduleDate &&
     rescheduleTime &&
@@ -751,14 +798,27 @@ export default function BookingPage() {
                   <Button
                     onClick={() => setEditMode("reschedule")}
                     className="w-full justify-center"
-                    disabled={editBooking.status === "completed" || editBooking.status === "in_progress"}
+                    disabled={
+                      editBooking.status === "completed" ||
+                      editBooking.status === "in_progress" ||
+                      editBooking.status === "cancelled"
+                    }
                   >
                     Reschedule
                   </Button>
                   <Button
                     variant="outline"
-                    onClick={() => setShowCancelConfirm(true)}
-                    disabled={editBooking.status === "completed" || editBooking.status === "in_progress"}
+                    onClick={() => {
+                      setCancelReason("");
+                      setCancelReasonOther("");
+                      setShowCancelFinalConfirm(false);
+                      setShowCancelConfirm(true);
+                    }}
+                    disabled={
+                      editBooking.status === "completed" ||
+                      editBooking.status === "in_progress" ||
+                      editBooking.status === "cancelled"
+                    }
                     className="w-full justify-center text-red-600 hover:bg-red-50 hover:border-red-200 disabled:text-slate-400 disabled:border-slate-200 disabled:hover:bg-white"
                   >
                     Cancel Booking
@@ -805,7 +865,7 @@ export default function BookingPage() {
                       }}
                       className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand"
                     >
-                      {rescheduleReasons.map((r) => (
+                      {BOOKING_EDIT_REASONS.map((r) => (
                         <option key={r.value || "empty"} value={r.value}>
                           {r.label}
                         </option>
@@ -865,7 +925,7 @@ export default function BookingPage() {
                 <span className="font-semibold text-slate-900">
                   {rescheduleReason === "other"
                     ? rescheduleReasonOther
-                    : rescheduleReasons.find((r) => r.value === rescheduleReason)?.label}
+                    : BOOKING_EDIT_REASONS.find((r) => r.value === rescheduleReason)?.label}
                 </span>
               </>
             )}
@@ -880,26 +940,104 @@ export default function BookingPage() {
         </div>
       </Modal>
 
-      {/* Cancel Booking Confirmation Modal */}
+      {/* Cancel booking — step 1: reason */}
       <Modal
-        isOpen={showCancelConfirm}
-        onClose={() => setShowCancelConfirm(false)}
+        isOpen={showCancelConfirm && !showCancelFinalConfirm}
+        onClose={() => {
+          setShowCancelConfirm(false);
+          setShowCancelFinalConfirm(false);
+          setCancelReason("");
+          setCancelReasonOther("");
+        }}
         title="Cancel Booking"
         size="sm"
       >
         <div className="space-y-4">
           <p className="text-sm text-slate-600">
-            Are you sure you want to cancel this booking? This action cannot be undone.
+            Choose a cancellation reason. You will confirm on the next step.
           </p>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-slate-600">Reason</label>
+            <select
+              value={cancelReason}
+              onChange={(e) => {
+                setCancelReason(e.target.value);
+                if (e.target.value !== "other") setCancelReasonOther("");
+              }}
+              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand"
+            >
+              {BOOKING_EDIT_REASONS.map((r) => (
+                <option key={r.value || "cancel-empty"} value={r.value}>
+                  {r.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          {cancelReason === "other" && (
+            <div>
+              <label className="mb-1 block text-xs font-medium text-slate-600">Please specify</label>
+              <textarea
+                rows={4}
+                value={cancelReasonOther}
+                onChange={(e) => setCancelReasonOther(e.target.value)}
+                placeholder="Enter your reason for cancelling..."
+                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand placeholder:text-slate-400 resize-none"
+              />
+            </div>
+          )}
           <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={() => setShowCancelConfirm(false)}>
-              No, Keep it
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowCancelConfirm(false);
+                setShowCancelFinalConfirm(false);
+                setCancelReason("");
+                setCancelReasonOther("");
+              }}
+            >
+              Discard
             </Button>
-            <Button variant="danger" onClick={handleCancelConfirm}>
-              Cancel Booking
+            <Button onClick={handleCancelContinueToConfirm} disabled={!canConfirmCancel}>
+              Continue
             </Button>
           </div>
         </div>
+      </Modal>
+
+      {/* Cancel booking — step 2: confirm */}
+      <Modal
+        isOpen={showCancelConfirm && showCancelFinalConfirm}
+        onClose={() => setShowCancelFinalConfirm(false)}
+        title="Confirm cancellation"
+        size="sm"
+      >
+        {editBooking && (
+          <div className="space-y-4">
+            <p className="text-sm text-slate-600">
+              Cancel{" "}
+              <span className="font-semibold text-slate-900">{editBooking.referenceNo}</span>
+              {" — "}
+              {formatDate(editBooking.date)} at {editBooking.time}?
+            </p>
+            <p className="text-sm text-slate-600">
+              Reason:{" "}
+              <span className="font-semibold text-slate-900">
+                {cancelReason === "other"
+                  ? cancelReasonOther.trim()
+                  : BOOKING_EDIT_REASONS.find((r) => r.value === cancelReason)?.label}
+              </span>
+            </p>
+            <p className="text-sm text-slate-500">This action cannot be undone.</p>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setShowCancelFinalConfirm(false)}>
+                Discard
+              </Button>
+              <Button variant="danger" onClick={handleCancelConfirm}>
+                Cancel booking
+              </Button>
+            </div>
+          </div>
+        )}
       </Modal>
     </div>
   );

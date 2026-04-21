@@ -11,7 +11,7 @@ const statusStyles: Record<string, string> = {
   pending: "bg-amber-50 text-amber-700 border-amber-200",
   cancelled: "bg-red-50 text-red-700 border-red-200",
   // Task statuses
-  todo: "bg-slate-50 text-slate-600 border-slate-200",
+  todo: "bg-amber-50 text-amber-700 border-amber-200",
   in_progress: "bg-blue-50 text-blue-700 border-blue-200",
   // Technician statuses
   available: "bg-green-50 text-green-700 border-green-200",

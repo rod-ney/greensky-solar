@@ -92,6 +92,7 @@ type QuotationPayload = {
   clientNumber?: string;
   technician?: string;
   adminComment?: string;
+  clientComment?: string;
   installationStartDate?: string;
   installationEndDate?: string;
   materials?: string;
@@ -923,6 +924,12 @@ export default function ReportsPage() {
                               <span className="font-medium text-red-700">{q.adminComment}</span>
                             </p>
                           )}
+                          {q.clientComment && (
+                            <p className="col-span-2">
+                              <span className="text-slate-500">Client Comment:</span>{" "}
+                              <span className="font-medium text-amber-700">{q.clientComment}</span>
+                            </p>
+                          )}
                         </div>
                         <div>
                           <p className="mb-1 text-xs font-medium text-slate-500">Materials</p>
@@ -1240,10 +1247,10 @@ export default function ReportsPage() {
                 setPendingCloseAction(null);
               }}
             >
-              No, keep open
+              Discard
             </Button>
             <Button variant="danger" onClick={handleCloseConfirm}>
-              Yes, close
+              Close
             </Button>
           </div>
         </div>

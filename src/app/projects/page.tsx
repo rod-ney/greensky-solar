@@ -535,14 +535,13 @@ export default function ProjectsPage() {
               <label className="block text-sm font-medium text-slate-700 mb-1">
                 Location
               </label>
-              <input
-                type="text"
+              <textarea
                 value={newProjectLocation}
-                onChange={(e) => setNewProjectLocation(e.target.value)}
                 readOnly
                 disabled
-                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand"
-                placeholder="Project location (auto-filled from client)"
+                rows={4}
+                className="w-full min-h-[5.5rem] max-h-48 resize-y overflow-y-auto rounded-lg border border-slate-200 px-3 py-2 text-sm leading-relaxed text-slate-900 outline-none focus:border-brand focus:ring-1 focus:ring-brand break-words whitespace-pre-wrap disabled:cursor-not-allowed disabled:opacity-80"
+                placeholder="e.g. 42 Rizal Avenue, Quezon City, Metro Manila"
               />
             </div>
           </div>
@@ -556,8 +555,6 @@ export default function ProjectsPage() {
                 min={getTodayInManila()}
                 value={newProjectStartDate}
                 onChange={(e) => setNewProjectStartDate(e.target.value)}
-                readOnly
-                disabled
                 className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand"
               />
             </div>
@@ -567,11 +564,9 @@ export default function ProjectsPage() {
               </label>
               <input
                 type="date"
-                min={getTodayInManila()}
+                min={newProjectStartDate || getTodayInManila()}
                 value={newProjectEndDate}
                 onChange={(e) => setNewProjectEndDate(e.target.value)}
-                readOnly
-                disabled
                 className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand"
               />
             </div>
@@ -592,8 +587,6 @@ export default function ProjectsPage() {
                     e.preventDefault();
                   }
                 }}
-                readOnly
-                disabled
                 className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand"
                 placeholder="0.00"
               />

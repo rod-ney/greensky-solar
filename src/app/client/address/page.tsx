@@ -4,7 +4,7 @@ import { useState, useCallback, useEffect } from "react";
 import dynamic from "next/dynamic";
 import {
   MapPin,
-  Plus,
+  MapPinned,
   Edit2,
   Trash2,
   Star,
@@ -22,6 +22,7 @@ import Modal from "@/components/ui/Modal";
 import ConfirmModal from "@/components/ui/ConfirmModal";
 import { toast } from "@/lib/toast";
 import { formatCurrency } from "@/lib/format";
+import { matchPhCodesFromNominatimAddress } from "@/lib/ph-nominatim-match";
 import type { SavedAddress, Appliance } from "@/types/client";
 
 const DynamicMapView = dynamic(() => import("./MapView"), {
@@ -103,7 +104,7 @@ export default function AddressPage() {
     void loadAddresses();
   }, []);
 
-  const [showAddModal, setShowAddModal] = useState(false);
+  const [showSavedAddressesModal, setShowSavedAddressesModal] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [showSetDefaultConfirm, setShowSetDefaultConfirm] = useState(false);
@@ -297,6 +298,69 @@ export default function AddressPage() {
     []
   );
 
+  const fillSelectorsFromCoordinates = useCallback(
+    async (lat: number, lng: number) => {
+      if (
+        regions.length === 0 ||
+        provinces.length === 0 ||
+        cities.length === 0 ||
+        barangays.length === 0
+      ) {
+        setSelectorMessage(
+          "Address data is still loading. Click Locate me again in a few seconds."
+        );
+        return;
+      }
+      try {
+        setSelectorMessage(
+          "Matching your location to region, province, city, and barangay…"
+        );
+        const res = await fetch(
+          `/api/geocode/reverse?lat=${encodeURIComponent(String(lat))}&lon=${encodeURIComponent(String(lng))}`
+        );
+        if (!res.ok) throw new Error("reverse failed");
+        const data = (await res.json()) as { address?: Record<string, string> };
+        const raw = data.address;
+        if (!raw) throw new Error("no address in response");
+
+        const matched = matchPhCodesFromNominatimAddress(
+          raw as Record<string, string | undefined>,
+          regions,
+          provinces,
+          cities,
+          barangays
+        );
+        if (!matched?.regionCode) {
+          setSelectorMessage(
+            "Could not match this pin to the Philippine address list. Choose region, province, city, and barangay manually."
+          );
+          return;
+        }
+
+        setSelectedRegionCode(matched.regionCode);
+        setSelectedProvinceCode(matched.provinceCode);
+        setSelectedCityCode(matched.cityCode);
+        setSelectedBarangayCode(matched.barangayCode);
+
+        const filled: string[] = [];
+        if (matched.provinceCode) filled.push("province");
+        if (matched.cityCode) filled.push("city");
+        if (matched.barangayCode) filled.push("barangay");
+        setSelectorMessage(
+          filled.length > 0
+            ? `Filled ${filled.join(", ")} from your pinned location.`
+            : "Region set from your location — select province, city, and barangay below."
+        );
+      } catch (e) {
+        console.warn("Reverse geocode:", e);
+        setSelectorMessage(
+          "Location pinned; automatic address lookup failed. Use the dropdowns to complete your address."
+        );
+      }
+    },
+    [regions, provinces, cities, barangays]
+  );
+
   const handleSetDefault = useCallback(
     async (id: string) => {
       setSetDefaultSubmitting(true);
@@ -348,11 +412,14 @@ export default function AddressPage() {
     const applyStoredPin = (message: string): boolean => {
       const stored = readStoredPin();
       if (!stored) return false;
-      setPinLat(Number(stored.lat.toFixed(6)));
-      setPinLng(Number(stored.lng.toFixed(6)));
+      const lat = Number(stored.lat.toFixed(6));
+      const lng = Number(stored.lng.toFixed(6));
+      setPinLat(lat);
+      setPinLng(lng);
       setFocusPinKey((k) => k + 1);
       setIsLocating(false);
       setLocateMessage(message);
+      void fillSelectorsFromCoordinates(lat, lng);
       return true;
     };
 
@@ -382,8 +449,10 @@ export default function AddressPage() {
 
     const applyPosition = (pos: GeolocationPosition, fromCache: boolean) => {
       const { latitude, longitude } = pos.coords;
-      setPinLat(Number(latitude.toFixed(6)));
-      setPinLng(Number(longitude.toFixed(6)));
+      const lat = Number(latitude.toFixed(6));
+      const lng = Number(longitude.toFixed(6));
+      setPinLat(lat);
+      setPinLng(lng);
       try {
         localStorage.setItem(
           LAST_KNOWN_GEO_PIN_KEY,
@@ -399,6 +468,7 @@ export default function AddressPage() {
           ? "Pinned your last known location (offline fallback)."
           : "Location pinned from your device."
       );
+      void fillSelectorsFromCoordinates(lat, lng);
     };
 
     const handleFinalError = (err: GeolocationPositionError) => {
@@ -451,7 +521,7 @@ export default function AddressPage() {
         maximumAge: 0,
       }
     );
-  }, []);
+  }, [fillSelectorsFromCoordinates]);
 
   const handleDelete = useCallback(async () => {
     if (!deleteTarget) return;
@@ -644,199 +714,23 @@ export default function AddressPage() {
             Manage your properties, appliances, and electricity details
           </p>
         </div>
-        <Button icon={Plus} onClick={() => setShowAddModal(true)}>
-          Add Address
+        <Button
+          icon={MapPinned}
+          onClick={() => {
+            setShowSavedAddressesModal(true);
+            if (addresses.length > 0) {
+              setExpandedId(selectedAddr?.id ?? addresses[0].id);
+            }
+          }}
+        >
+          My Saved Address
         </Button>
       </div>
 
-      {/* Split Layout */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        {/* ===== RIGHT SIDE (LG) - SAVED ADDRESSES ===== */}
-        <div className="space-y-4 lg:order-2">
-          {addresses.map((addr) => {
-            const expanded = expandedId === addr.id;
-            const isSelected = selectedAddr?.id === addr.id;
-
-            return (
-              <div
-                key={addr.id}
-                className={`rounded-2xl border bg-white transition-all ${
-                  isSelected
-                    ? "border-brand ring-1 ring-brand/20"
-                    : "border-slate-200 hover:border-slate-300"
-                }`}
-              >
-                {/* Card Header */}
-                <div
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => selectAddress(addr)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" || e.key === " ") {
-                      e.preventDefault();
-                      selectAddress(addr);
-                    }
-                  }}
-                  className="flex w-full items-start gap-3 p-5 text-left cursor-pointer"
-                >
-                  <div
-                    className={`flex h-10 w-10 items-center justify-center rounded-xl ${
-                      isSelected
-                        ? "bg-brand text-white"
-                        : "bg-slate-100 text-slate-500"
-                    }`}
-                  >
-                    {addressIcons[addr.label] ?? <MapPin className="h-4 w-4" />}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <h3 className="text-sm font-semibold text-slate-900">
-                        {addr.label}
-                      </h3>
-                      {addr.isDefault && (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-brand-50 px-2 py-0.5 text-[10px] font-medium text-brand">
-                          <Star className="h-2.5 w-2.5 fill-brand" />
-                          Default
-                        </span>
-                      )}
-                    </div>
-                    <p className="mt-0.5 text-xs text-slate-500 leading-relaxed">
-                      {addr.fullAddress}
-                    </p>
-                    <div className="mt-2 flex flex-wrap gap-3 text-[11px] text-slate-400">
-                      <span className="flex items-center gap-1">
-                        <Zap className="h-3 w-3" />
-                        {totalApplianceCount(addr.appliances)} appliance
-                        {totalApplianceCount(addr.appliances) !== 1 ? "s" : ""}
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <Receipt className="h-3 w-3" />
-                        {formatCurrency(addr.monthlyBill)}/mo
-                      </span>
-                    </div>
-                  </div>
-                  <div className="flex flex-col gap-1">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setExpandedId(expanded ? null : addr.id);
-                      }}
-                      className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100"
-                    >
-                      {expanded ? (
-                        <ChevronUp className="h-4 w-4" />
-                      ) : (
-                        <ChevronDown className="h-4 w-4" />
-                      )}
-                    </button>
-                  </div>
-                </div>
-
-                {/* Expanded Section */}
-                {expanded && (
-                  <div className="border-t border-slate-100 px-5 pb-5">
-                    {/* Appliances */}
-                    <div className="mt-4">
-                      <h4 className="text-xs font-semibold text-slate-700 mb-2.5 flex items-center gap-1.5">
-                        <Zap className="h-3.5 w-3.5 text-amber-500" />
-                        Household Appliances
-                      </h4>
-                      <div className="space-y-1.5">
-                        {addr.appliances.length === 0 ? (
-                          <div className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-500">
-                            No appliances added
-                          </div>
-                        ) : (
-                          addr.appliances.map((app) => (
-                            <div
-                              key={app.id}
-                              className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2"
-                            >
-                              <span className="text-xs font-medium text-slate-700">
-                                {app.name}
-                              </span>
-                              <span className="text-[10px] text-slate-500">
-                                Qty: {app.quantity}
-                              </span>
-                            </div>
-                          ))
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Monthly Bill */}
-                    <div className="mt-4">
-                      <h4 className="text-xs font-semibold text-slate-700 mb-2 flex items-center gap-1.5">
-                        <Receipt className="h-3.5 w-3.5 text-blue-500" />
-                        Average Monthly Meralco Bill
-                      </h4>
-                      <div className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 flex items-center justify-between">
-                        <span className="text-sm font-bold text-slate-900">
-                          {formatCurrency(addr.monthlyBill)}
-                        </span>
-                        <span className="text-[10px] text-slate-400">per month</span>
-                      </div>
-                    </div>
-
-                    {/* Coordinates */}
-                    <div className="mt-4 flex items-center gap-2 text-[11px] text-slate-400">
-                      <Navigation className="h-3 w-3" />
-                      <span>
-                        {addr.lat.toFixed(4)}, {addr.lng.toFixed(4)}
-                      </span>
-                    </div>
-
-                    {/* Actions */}
-                    <div className="mt-4 flex gap-2">
-                      {!addr.isDefault && (
-                        <button
-                          onClick={() => {
-                            setDefaultTargetId(addr.id);
-                            setShowSetDefaultConfirm(true);
-                          }}
-                          className="flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 transition-colors"
-                        >
-                          <Star className="h-3 w-3" />
-                          Set as Default
-                        </button>
-                      )}
-                      <button className="flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 transition-colors">
-                        <Edit2 className="h-3 w-3" />
-                        Edit
-                      </button>
-                      <button
-                        onClick={() => {
-                          setDeleteTarget(addr.id);
-                          setShowDeleteConfirm(true);
-                        }}
-                        className="flex items-center gap-1.5 rounded-lg border border-red-200 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 transition-colors"
-                      >
-                        <Trash2 className="h-3 w-3" />
-                        Delete
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            );
-          })}
-
-          {addresses.length === 0 && (
-            <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center">
-              <MapPin className="mx-auto h-8 w-8 text-slate-300" />
-              <p className="mt-3 text-sm font-medium text-slate-600">
-                No addresses saved
-              </p>
-              <p className="mt-1 text-xs text-slate-400">
-                Add your first address to get started
-              </p>
-            </div>
-          )}
-        </div>
-
-        {/* ===== LEFT SIDE (LG) - LOCATION + ADDRESS ===== */}
-        <div className="space-y-4 lg:order-1">
-          <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden">
+      {/* Location map + how-to (left) + scrollable address form (right) */}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(320px,480px)] lg:items-start lg:gap-5">
+        <div className="flex flex-col gap-4">
+          <div className="min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white">
             {/* Map Header */}
             <div className="border-b border-slate-100 px-5 py-3 flex items-center justify-between">
               <h3 className="text-sm font-semibold text-slate-900 flex items-center gap-2">
@@ -900,8 +794,27 @@ export default function AddressPage() {
             </div>
           </div>
 
-          {/* Map Instructions */}
-          <div className="rounded-2xl border border-slate-200 bg-white p-4">
+          <div className="shrink-0 rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-4">
+            <h4 className="text-xs font-semibold text-slate-600 mb-2">How to use</h4>
+            <ul className="space-y-1.5 text-[11px] text-slate-500">
+              <li className="flex items-start gap-2">
+                <span className="mt-0.5 h-1 w-1 shrink-0 rounded-full bg-slate-400" />
+                Open <span className="font-medium text-slate-600">My Saved Address</span> to view
+                and manage saved locations
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="mt-0.5 h-1 w-1 shrink-0 rounded-full bg-slate-400" />
+                Click anywhere on the map to pin a location, then complete the form and save
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="mt-0.5 h-1 w-1 shrink-0 rounded-full bg-slate-400" />
+                Select an address in the modal to center it on the map
+              </li>
+            </ul>
+          </div>
+        </div>
+
+        <div className="min-h-0 min-w-0 max-h-[calc(100dvh-8rem)] overflow-y-auto overscroll-contain rounded-2xl border border-slate-200 bg-white p-4 [scrollbar-gutter:stable] lg:max-h-[calc(100dvh-6rem)]">
             <h4 className="text-sm font-semibold text-slate-900 mb-3">
             Address
             </h4>
@@ -919,7 +832,7 @@ export default function AddressPage() {
                 <input
                   value={selectorLabel}
                   onChange={(e) => setSelectorLabel(e.target.value)}
-                  placeholder="e.g. Home, Office"
+                  placeholder="Home, Office"
                   className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand"
                 />
               </div>
@@ -930,7 +843,7 @@ export default function AddressPage() {
                 <input
                   value={selectorZipCode}
                   onChange={(e) => setSelectorZipCode(e.target.value)}
-                  placeholder="e.g. 1203"
+                  placeholder="1203"
                   className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand"
                 />
               </div>
@@ -941,120 +854,13 @@ export default function AddressPage() {
                 <input
                   value={selectorStreet}
                   onChange={(e) => setSelectorStreet(e.target.value)}
-                  placeholder="e.g. 123 Solar Drive, Brgy. San Antonio"
-                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand"
-                />
-              </div>
-              <div className="sm:col-span-2">
-                <label className="mb-1 block text-[11px] font-medium text-slate-500">
-                  Average Monthly Meralco Bill (PHP)
-                </label>
-                <input
-                  type="number"
-                  min="0"
-                  value={selectorBill}
-                  onChange={(e) => setSelectorBill(e.target.value)}
-                  placeholder="e.g. 8500"
+                  placeholder="123 Solar Drive, Brgy. San Antonio"
                   className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand"
                 />
               </div>
             </div>
 
-            <div className="mt-3 rounded-xl border border-slate-200 p-3">
-              <h5 className="text-xs font-semibold text-slate-700 mb-2">
-                Appliances Selection
-              </h5>
-              <p className="text-[11px] text-slate-500 mb-3">
-                Select household appliances and set quantity. Use &quot;Other&quot; if missing.
-              </p>
-
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                {applianceOptions.map((name) => {
-                  const selected = Boolean(selectedAppliances[name]);
-                  return (
-                    <div
-                      key={name}
-                      className={`rounded-lg border px-2.5 py-2 ${
-                        selected ? "border-brand/40 bg-brand-50/40" : "border-slate-200"
-                      }`}
-                    >
-                      <div className="flex items-center justify-between gap-2">
-                        <label className="flex items-center gap-2 text-xs text-slate-700">
-                          <input
-                            type="checkbox"
-                            checked={selected}
-                            onChange={() => toggleAppliance(name)}
-                            className="h-3.5 w-3.5 rounded border-slate-300 text-brand focus:ring-brand"
-                          />
-                          {name}
-                        </label>
-                        {selected && (
-                          <input
-                            type="number"
-                            min="1"
-                            value={selectedAppliances[name]}
-                            onChange={(e) =>
-                              updateApplianceQty(name, Number(e.target.value) || 1)
-                            }
-                            className="w-16 rounded border border-slate-200 px-2 py-1 text-xs outline-none focus:border-brand focus:ring-1 focus:ring-brand"
-                          />
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-
-              <div className="mt-3 rounded-lg border border-dashed border-slate-200 p-2.5">
-                <p className="text-[11px] font-medium text-slate-600 mb-2">Other appliance</p>
-                <div className="flex flex-col gap-2 sm:flex-row">
-                  <input
-                    value={otherApplianceName}
-                    onChange={(e) => setOtherApplianceName(e.target.value)}
-                    placeholder="Appliance name"
-                    className="flex-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs outline-none focus:border-brand focus:ring-1 focus:ring-brand"
-                  />
-                  <input
-                    type="number"
-                    min="1"
-                    value={otherApplianceQty}
-                    onChange={(e) => setOtherApplianceQty(e.target.value)}
-                    className="w-24 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs outline-none focus:border-brand focus:ring-1 focus:ring-brand"
-                  />
-                  <button
-                    type="button"
-                    onClick={addOtherAppliance}
-                    className="rounded-lg bg-slate-900 px-3 py-2 text-xs font-medium text-white hover:bg-slate-800 transition-colors"
-                  >
-                    Add Other
-                  </button>
-                </div>
-
-                {otherAppliances.length > 0 && (
-                  <div className="mt-2 space-y-1.5">
-                    {otherAppliances.map((item, idx) => (
-                      <div
-                        key={`${item.name}-${idx}`}
-                        className="flex items-center justify-between rounded bg-slate-50 px-2.5 py-1.5"
-                      >
-                        <span className="text-xs text-slate-700">
-                          {item.name} (Qty: {item.quantity})
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => removeOtherAppliance(idx)}
-                          className="text-xs text-red-500 hover:text-red-600"
-                        >
-                          Remove
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div className="mb-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
                 <label className="mb-1 block text-[11px] font-medium text-slate-500">
                   Region
@@ -1162,7 +968,7 @@ export default function AddressPage() {
               selectedProvinceCode ||
               selectedCityCode ||
               selectedBarangayCode) && (
-              <div className="mt-3 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">
+              <div className="mb-3 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">
                 <span className="font-medium text-slate-700">Preview:</span>{" "}
                 {[
                   getBarangayName(selectedBarangayCode),
@@ -1174,6 +980,115 @@ export default function AddressPage() {
                   .join(", ")}
               </div>
             )}
+
+            <div className="mb-3">
+              <label className="mb-1 block text-[11px] font-medium text-slate-500">
+                Average Monthly Meralco Bill (PHP)
+              </label>
+              <input
+                type="number"
+                min="0"
+                value={selectorBill}
+                onChange={(e) => setSelectorBill(e.target.value)}
+                placeholder="5500"
+                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand"
+              />
+            </div>
+
+            <div className="mt-3 rounded-xl border border-slate-200 p-3">
+              <h5 className="text-xs font-semibold text-slate-700 mb-2">
+                Appliances Selection
+              </h5>
+              <p className="text-[11px] text-slate-500 mb-3">
+                Select household appliances and set quantity. Use &quot;Other&quot; if missing.
+              </p>
+
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                {applianceOptions.map((name) => {
+                  const selected = Boolean(selectedAppliances[name]);
+                  return (
+                    <div
+                      key={name}
+                      className={`rounded-lg border px-2.5 py-2 ${
+                        selected ? "border-brand/40 bg-brand-50/40" : "border-slate-200"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <label className="flex items-center gap-2 text-xs text-slate-700">
+                          <input
+                            type="checkbox"
+                            checked={selected}
+                            onChange={() => toggleAppliance(name)}
+                            className="h-3.5 w-3.5 rounded border-slate-300 text-brand focus:ring-brand"
+                          />
+                          {name}
+                        </label>
+                        {selected && (
+                          <input
+                            type="number"
+                            min="1"
+                            value={selectedAppliances[name]}
+                            onChange={(e) =>
+                              updateApplianceQty(name, Number(e.target.value) || 1)
+                            }
+                            className="w-16 rounded border border-slate-200 px-2 py-1 text-xs outline-none focus:border-brand focus:ring-1 focus:ring-brand"
+                          />
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="mt-3 rounded-lg border border-dashed border-slate-200 p-2.5">
+                <p className="text-[11px] font-medium text-slate-600 mb-2">Other appliance</p>
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <input
+                    value={otherApplianceName}
+                    onChange={(e) => setOtherApplianceName(e.target.value)}
+                    placeholder="Appliance name"
+                    className="flex-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs outline-none focus:border-brand focus:ring-1 focus:ring-brand"
+                  />
+                  <input
+                    type="number"
+                    min="1"
+                    value={otherApplianceQty}
+                    onChange={(e) => setOtherApplianceQty(e.target.value)}
+                    className="w-24 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs outline-none focus:border-brand focus:ring-1 focus:ring-brand"
+                  />
+                  <button
+                    type="button"
+                    onClick={addOtherAppliance}
+                    className="rounded-lg bg-slate-900 px-3 py-2 text-xs font-medium text-white hover:bg-slate-800 transition-colors"
+                  >
+                    Add Other
+                  </button>
+                </div>
+
+                {otherAppliances.length > 0 && (
+                  <div className="mt-2 space-y-1.5">
+                    {otherAppliances.map((item, idx) => (
+                      <div
+                        key={`${item.name}-${idx}`}
+                        className="flex items-center justify-between rounded bg-slate-50 px-2.5 py-1.5"
+                      >
+                        <span className="text-xs text-slate-700">
+                          {item.name} (Qty: {item.quantity})
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => removeOtherAppliance(idx)}
+                          className="text-xs text-red-500 hover:text-red-600"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
             <div className="mt-3 flex items-center justify-between gap-2">
               <p
                 className={`text-xs ${
@@ -1197,118 +1112,194 @@ export default function AddressPage() {
                 Save Address
               </Button>
             </div>
-          </div>
-
-          <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-4">
-            <h4 className="text-xs font-semibold text-slate-600 mb-2">How to use</h4>
-            <ul className="space-y-1.5 text-[11px] text-slate-500">
-              <li className="flex items-start gap-2">
-                <span className="mt-0.5 h-1 w-1 rounded-full bg-slate-400 flex-shrink-0" />
-                Click on an address card to see its location on the map
-              </li>
-              <li className="flex items-start gap-2">
-                <span className="mt-0.5 h-1 w-1 rounded-full bg-slate-400 flex-shrink-0" />
-                Click anywhere on the map to pin a new location
-              </li>
-              <li className="flex items-start gap-2">
-                <span className="mt-0.5 h-1 w-1 rounded-full bg-slate-400 flex-shrink-0" />
-                Expand address cards to view appliances and electricity details
-              </li>
-            </ul>
-          </div>
         </div>
       </div>
 
-      {/* Add Address Modal */}
+      {/* My Saved Addresses — opened from header */}
       <Modal
-        isOpen={showAddModal}
-        onClose={() => setShowAddModal(false)}
-        title="Add New Address"
+        isOpen={showSavedAddressesModal}
+        onClose={() => setShowSavedAddressesModal(false)}
+        title="My Saved Addresses"
         size="lg"
       >
-        <form
-          className="space-y-4"
-          onSubmit={(e) => {
-            e.preventDefault();
-            setShowAddModal(false);
-          }}
-        >
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">
-                Label
-              </label>
-              <input
-                type="text"
-                placeholder="e.g. Home, Office"
-                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand"
-              />
+        <div className="space-y-4">
+          {addresses.map((addr) => {
+            const expanded = expandedId === addr.id;
+            const isSelected = selectedAddr?.id === addr.id;
+
+            return (
+              <div
+                key={addr.id}
+                className={`rounded-2xl border-2 bg-white shadow-sm transition-all ${
+                  isSelected
+                    ? "border-brand ring-1 ring-brand/15"
+                    : "border-slate-200 hover:border-slate-300"
+                }`}
+              >
+                <div
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => selectAddress(addr)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      selectAddress(addr);
+                    }
+                  }}
+                  className="flex w-full items-start gap-3 p-5 text-left cursor-pointer"
+                >
+                  <div
+                    className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${
+                      isSelected
+                        ? "bg-brand text-white"
+                        : "bg-slate-100 text-slate-500"
+                    }`}
+                  >
+                    {addressIcons[addr.label] ?? <MapPin className="h-4 w-4" />}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h3 className="text-sm font-semibold text-slate-900">
+                        {addr.label}
+                      </h3>
+                      {addr.isDefault && (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-brand-50 px-2 py-0.5 text-[10px] font-medium text-brand">
+                          <Star className="h-2.5 w-2.5 fill-brand" />
+                          Default
+                        </span>
+                      )}
+                    </div>
+                    <p className="mt-0.5 text-xs text-slate-600 leading-relaxed">
+                      {addr.fullAddress}
+                    </p>
+                    <div className="mt-2 flex flex-wrap gap-3 text-[11px] text-slate-500">
+                      <span className="flex items-center gap-1">
+                        <Zap className="h-3 w-3 text-slate-400" />
+                        {totalApplianceCount(addr.appliances)} appliance
+                        {totalApplianceCount(addr.appliances) !== 1 ? "s" : ""}
+                      </span>
+                      <span className="flex items-center gap-1">
+                        <Receipt className="h-3 w-3 text-slate-400" />
+                        {formatCurrency(addr.monthlyBill)}/mo
+                      </span>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setExpandedId(expanded ? null : addr.id);
+                    }}
+                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100"
+                    aria-expanded={expanded}
+                  >
+                    {expanded ? (
+                      <ChevronUp className="h-4 w-4" />
+                    ) : (
+                      <ChevronDown className="h-4 w-4" />
+                    )}
+                  </button>
+                </div>
+
+                {expanded && (
+                  <div className="border-t border-slate-100 px-5 pb-5">
+                    <div className="mt-4">
+                      <h4 className="mb-2.5 flex items-center gap-1.5 text-xs font-semibold text-slate-700">
+                        <Zap className="h-3.5 w-3.5 text-amber-500" />
+                        Household Appliances
+                      </h4>
+                      <div className="space-y-1.5">
+                        {addr.appliances.length === 0 ? (
+                          <div className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-500">
+                            No appliances added
+                          </div>
+                        ) : (
+                          addr.appliances.map((app) => (
+                            <div
+                              key={app.id}
+                              className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2"
+                            >
+                              <span className="text-xs font-medium text-slate-700">
+                                {app.name}
+                              </span>
+                              <span className="text-[10px] text-slate-500">
+                                Qty: {app.quantity}
+                              </span>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="mt-4">
+                      <h4 className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-slate-700">
+                        <Receipt className="h-3.5 w-3.5 text-blue-500" />
+                        Average Monthly Meralco Bill
+                      </h4>
+                      <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-white px-3 py-2.5">
+                        <span className="text-sm font-bold text-slate-900">
+                          {formatCurrency(addr.monthlyBill)}
+                        </span>
+                        <span className="text-[10px] text-slate-400">per month</span>
+                      </div>
+                    </div>
+
+                    <div className="mt-4 flex items-center gap-2 text-[11px] text-slate-400">
+                      <Navigation className="h-3 w-3" />
+                      <span>
+                        {addr.lat.toFixed(4)}, {addr.lng.toFixed(4)}
+                      </span>
+                    </div>
+
+                    <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+                      {!addr.isDefault && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setDefaultTargetId(addr.id);
+                            setShowSetDefaultConfirm(true);
+                          }}
+                          className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-50 sm:min-w-[140px]"
+                        >
+                          <Star className="h-3 w-3" />
+                          Set as Default
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-50 sm:min-w-0"
+                      >
+                        <Edit2 className="h-3 w-3" />
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setDeleteTarget(addr.id);
+                          setShowDeleteConfirm(true);
+                        }}
+                        className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-red-200 px-3 py-2 text-xs font-medium text-red-600 transition-colors hover:bg-red-50 sm:min-w-0"
+                      >
+                        <Trash2 className="h-3 w-3" />
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+
+          {addresses.length === 0 && (
+            <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center">
+              <MapPin className="mx-auto h-8 w-8 text-slate-300" />
+              <p className="mt-3 text-sm font-medium text-slate-600">No addresses saved</p>
+              <p className="mt-1 text-xs text-slate-500">
+                Use the form beside the map to add your first address.
+              </p>
             </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">
-                ZIP Code
-              </label>
-              <input
-                type="text"
-                placeholder="e.g. 1203"
-                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand"
-              />
-            </div>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">
-              Full Address
-            </label>
-            <textarea
-              rows={2}
-              placeholder="Street, Barangay, City, Province"
-              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand resize-none"
-            />
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">
-                City
-              </label>
-              <input
-                type="text"
-                placeholder="City"
-                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">
-                Province
-              </label>
-              <input
-                type="text"
-                placeholder="Province"
-                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand"
-              />
-            </div>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">
-              Average Monthly Meralco Bill (PHP)
-            </label>
-            <input
-              type="number"
-              min="0"
-              placeholder="e.g. 8500"
-              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand"
-            />
-          </div>
-          <div className="flex justify-end gap-2 pt-2">
-            <Button
-              variant="outline"
-              type="button"
-              onClick={() => setShowAddModal(false)}
-            >
-              Cancel
-            </Button>
-            <Button type="submit">Save Address</Button>
-          </div>
-        </form>
+          )}
+        </div>
       </Modal>
 
       {/* Set Default Confirmation */}

@@ -8,6 +8,44 @@ export function getTodayInManila(): string {
     .slice(0, 10);
 }
 
+/** Lexicographic max of two YYYY-MM-DD strings (valid for ISO dates). */
+export function maxIsoDate(a: string, b: string): string {
+  return a >= b ? a : b;
+}
+
+/** Lexicographic min of two YYYY-MM-DD strings. */
+export function minIsoDate(a: string, b: string): string {
+  return a <= b ? a : b;
+}
+
+/** Local midnight timestamp for a calendar YYYY-MM-DD (browser local timezone). */
+export function isoDateLocalMidnightMs(iso: string): number {
+  const [y, m, d] = iso.slice(0, 10).split("-").map(Number);
+  return new Date(y, m - 1, d).getTime();
+}
+
+/** Add calendar days to a YYYY-MM-DD (UTC date arithmetic; stable for PH, no DST). */
+export function addDaysToIso(iso: string, delta: number): string {
+  const [y, m, d] = iso.slice(0, 10).split("-").map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  dt.setUTCDate(dt.getUTCDate() + delta);
+  const y2 = dt.getUTCFullYear();
+  const m2 = String(dt.getUTCMonth() + 1).padStart(2, "0");
+  const d2 = String(dt.getUTCDate()).padStart(2, "0");
+  return `${y2}-${m2}-${d2}`;
+}
+
+/** Full calendar days from `fromIso` to `toIso` (inclusive span offset: same day → 0). */
+export function diffCalendarDaysIso(fromIso: string, toIso: string): number {
+  const a = fromIso.slice(0, 10);
+  const b = toIso.slice(0, 10);
+  const [y1, m1, d1] = a.split("-").map(Number);
+  const [y2, m2, d2] = b.split("-").map(Number);
+  const u1 = Date.UTC(y1, m1 - 1, d1);
+  const u2 = Date.UTC(y2, m2 - 1, d2);
+  return Math.round((u2 - u1) / 86400000);
+}
+
 /** Convert string or Date to YYYY-MM-DD in Philippines timezone */
 export function toIsoDateManila(value: string | Date): string {
   if (typeof value === "string") {

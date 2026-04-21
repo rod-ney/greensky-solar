@@ -23,7 +23,21 @@ type BookingRow = {
   lng?: string | number | null;
   addr_lat?: string | number | null;
   addr_lng?: string | number | null;
+  address_id?: string | null;
+  addr_monthly_bill?: string | number | null;
+  appliances_json?: unknown;
 };
+
+function parseAppliancesFromRow(raw: unknown): Booking["addressAppliances"] {
+  if (raw == null) return [];
+  if (!Array.isArray(raw)) return [];
+  return raw.map((item: Record<string, unknown>) => ({
+    id: String(item.id ?? ""),
+    name: String(item.name ?? ""),
+    quantity: Number(item.quantity ?? 1) || 1,
+    wattage: Number(item.wattage ?? 0) || 0,
+  }));
+}
 
 function mapBooking(row: BookingRow): Booking {
   // Prefer saved_address pinned coords (addr_lat/addr_lng) over booking.lat/lng
@@ -31,6 +45,9 @@ function mapBooking(row: BookingRow): Booking {
     row.addr_lat != null ? Number(row.addr_lat) : row.lat != null ? Number(row.lat) : undefined;
   const lng =
     row.addr_lng != null ? Number(row.addr_lng) : row.lng != null ? Number(row.lng) : undefined;
+  const addressId = row.address_id ?? undefined;
+  const appliances = parseAppliancesFromRow(row.appliances_json);
+
   return {
     id: row.id,
     referenceNo: row.reference_no,
@@ -49,6 +66,14 @@ function mapBooking(row: BookingRow): Booking {
     userId: row.user_id ?? undefined,
     lat,
     lng,
+    addressId,
+    ...(addressId
+      ? {
+          addressMonthlyBill:
+            row.addr_monthly_bill != null ? Number(row.addr_monthly_bill) : 0,
+          addressAppliances: appliances,
+        }
+      : {}),
     projectId: row.project_id ?? undefined,
   };
 }
@@ -57,6 +82,23 @@ export async function listClientBookingsFromDb(userId?: string | null): Promise<
   const query = userId
     ? `
       SELECT b.id, b.reference_no, b.service_type, b.date, b.end_date, b.time, b.status, b.technician, b.address, b.notes, b.amount, b.lat, b.lng,
+             b.address_id,
+             sa.monthly_bill AS addr_monthly_bill,
+             (
+               SELECT COALESCE(
+                 json_agg(
+                   json_build_object(
+                     'id', a.id,
+                     'name', a.name,
+                     'quantity', a.quantity,
+                     'wattage', a.wattage
+                   ) ORDER BY a.name
+                 ),
+                 '[]'::json
+               )
+               FROM appliances a
+               WHERE b.address_id IS NOT NULL AND a.address_id = b.address_id
+             ) AS appliances_json,
              COALESCE(
                (SELECT u.name FROM users u WHERE u.id = b.user_id LIMIT 1),
                (SELECT u2.name FROM projects p2 JOIN users u2 ON u2.id = p2.user_id WHERE p2.booking_id = b.id LIMIT 1)
@@ -84,6 +126,23 @@ export async function listClientBookingsFromDb(userId?: string | null): Promise<
     `
     : `
       SELECT b.id, b.reference_no, b.service_type, b.date, b.end_date, b.time, b.status, b.technician, b.address, b.notes, b.amount, b.lat, b.lng,
+             b.address_id,
+             sa.monthly_bill AS addr_monthly_bill,
+             (
+               SELECT COALESCE(
+                 json_agg(
+                   json_build_object(
+                     'id', a.id,
+                     'name', a.name,
+                     'quantity', a.quantity,
+                     'wattage', a.wattage
+                   ) ORDER BY a.name
+                 ),
+                 '[]'::json
+               )
+               FROM appliances a
+               WHERE b.address_id IS NOT NULL AND a.address_id = b.address_id
+             ) AS appliances_json,
              COALESCE(
                (SELECT u.name FROM users u WHERE u.id = b.user_id LIMIT 1),
                (SELECT u2.name FROM projects p2 JOIN users u2 ON u2.id = p2.user_id WHERE p2.booking_id = b.id LIMIT 1)
@@ -109,6 +168,16 @@ export async function listClientBookingsFromDb(userId?: string | null): Promise<
     `;
   const result = await dbQuery<BookingRow>(query, userId ? [userId] : []);
   return result.rows.map(mapBooking);
+}
+
+export async function getBookingStatusFromDb(
+  bookingId: string
+): Promise<Booking["status"] | null> {
+  const result = await dbQuery<{ status: Booking["status"] }>(
+    "SELECT status FROM bookings WHERE id = $1 LIMIT 1",
+    [bookingId]
+  );
+  return result.rows[0]?.status ?? null;
 }
 
 export async function createClientBookingInDb(data: {

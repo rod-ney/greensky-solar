@@ -11,6 +11,8 @@ import {
   Trash2,
   Pencil,
   CalendarRange,
+  Info,
+  ChevronDown,
 } from "lucide-react";
 import Button from "@/components/ui/Button";
 import Modal from "@/components/ui/Modal";
@@ -42,6 +44,7 @@ type QuotationData = {
   clientNumber?: string;
   technician?: string;
   adminComment?: string;
+  clientComment?: string;
   materials: string;
   materialItems?: {
     description: string;
@@ -98,6 +101,34 @@ function parseQuotationData(description: string): QuotationData | null {
   } catch {
     return null;
   }
+}
+
+function formatQuotationTechniciansFromIds(
+  ids: string[],
+  options: { id: string; name: string }[]
+): string {
+  return ids
+    .map((id) => options.find((t) => t.id === id)?.name)
+    .filter(Boolean)
+    .join(", ");
+}
+
+function parseTechnicianIdsFromQuotation(
+  data: QuotationData,
+  options: { id: string; name: string }[]
+): string[] {
+  const raw = data.technician?.trim();
+  if (!raw) return [];
+  const names = raw
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const ids: string[] = [];
+  for (const name of names) {
+    const match = options.find((t) => t.name === name);
+    if (match && !ids.includes(match.id)) ids.push(match.id);
+  }
+  return ids;
 }
 
 const typeLabels: Record<TechReport["type"], string> = {
@@ -208,7 +239,8 @@ export default function TechnicianReportsPage() {
   const [quotClientName, setQuotClientName] = useState("");
   const [quotLocation, setQuotLocation] = useState("");
   const [quotClientNumber, setQuotClientNumber] = useState("");
-  const [quotTechnician, setQuotTechnician] = useState("");
+  const [quotTechnicianIds, setQuotTechnicianIds] = useState<string[]>([]);
+  const [showQuotTechniciansDropdown, setShowQuotTechniciansDropdown] = useState(false);
   const [quotMaterialItems, setQuotMaterialItems] = useState<MaterialItem[]>([
     { ...EMPTY_MATERIAL_ITEM },
   ]);
@@ -242,7 +274,8 @@ export default function TechnicianReportsPage() {
     setQuotClientName("");
     setQuotLocation("");
     setQuotClientNumber("");
-    setQuotTechnician(techProfile?.name ?? "");
+    setQuotTechnicianIds(techProfile?.id ? [techProfile.id] : []);
+    setShowQuotTechniciansDropdown(false);
     setQuotMaterialItems([{ ...EMPTY_MATERIAL_ITEM }]);
     setQuotTotal("");
     setQuotStartDate("");
@@ -258,7 +291,15 @@ export default function TechnicianReportsPage() {
       setQuotBookingId(data.bookingId ?? "");
       setQuotLocation(data.location ?? "");
       setQuotClientNumber(data.clientNumber ?? "");
-      setQuotTechnician(data.technician ?? techProfile?.name ?? "");
+      const parsedIds = parseTechnicianIdsFromQuotation(data, technicianOptions);
+      setQuotTechnicianIds(
+        parsedIds.length > 0
+          ? parsedIds
+          : techProfile?.id
+            ? [techProfile.id]
+            : []
+      );
+      setShowQuotTechniciansDropdown(false);
       const parsedItems = normalizeQuotationMaterialItems(data);
       setQuotMaterialItems(
         parsedItems.length > 0 ? parsedItems : [{ ...EMPTY_MATERIAL_ITEM }]
@@ -271,7 +312,8 @@ export default function TechnicianReportsPage() {
       setQuotClientName("");
       setQuotLocation("");
       setQuotClientNumber("");
-      setQuotTechnician(techProfile?.name ?? "");
+      setQuotTechnicianIds(techProfile?.id ? [techProfile.id] : []);
+      setShowQuotTechniciansDropdown(false);
       setQuotMaterialItems([
         { ...EMPTY_MATERIAL_ITEM, description: report.description },
       ]);
@@ -336,7 +378,10 @@ export default function TechnicianReportsPage() {
       bookingId: quotBookingId || undefined,
       location: quotLocation.trim(),
       clientNumber: quotClientNumber.trim(),
-      technician: quotTechnician.trim(),
+      technician: formatQuotationTechniciansFromIds(
+        quotTechnicianIds,
+        technicianOptions
+      ).trim(),
       materials: serializedMaterials.trim(),
       materialItems: quotMaterialItems
         .filter((item) => item.description.trim())
@@ -952,19 +997,78 @@ export default function TechnicianReportsPage() {
                 </div>
 
                 <div>
-                  <label className="block font-medium text-slate-700">Technician</label>
-                  <select
-                    value={quotTechnician}
-                    onChange={(e) => setQuotTechnician(e.target.value)}
-                    className="mt-1.5 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-slate-900 outline-none focus:border-brand focus:ring-1 focus:ring-brand"
-                  >
-                    <option value="">— Select technician —</option>
-                    {technicianOptions.map((technician) => (
-                      <option key={technician.id} value={technician.name}>
-                        {technician.name}
-                      </option>
-                    ))}
-                  </select>
+                  <label className="block font-medium text-slate-700">Technicians</label>
+                  <div className="relative mt-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setShowQuotTechniciansDropdown((prev) => !prev)}
+                      className="flex min-h-[42px] w-full items-center justify-between rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none transition-colors hover:border-slate-300 focus:border-brand focus:ring-1 focus:ring-brand"
+                    >
+                      {quotTechnicianIds.length > 0 ? (
+                        <span className="flex flex-wrap gap-1.5 pr-3">
+                          {quotTechnicianIds.map((techId) => {
+                            const label =
+                              technicianOptions.find((tech) => tech.id === techId)?.name ??
+                              techId;
+                            return (
+                              <span
+                                key={techId}
+                                className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800"
+                              >
+                                {label}
+                              </span>
+                            );
+                          })}
+                        </span>
+                      ) : (
+                        <span className="text-slate-400">Select technicians</span>
+                      )}
+                      <ChevronDown
+                        className={`h-4 w-4 shrink-0 text-slate-400 transition-transform ${
+                          showQuotTechniciansDropdown ? "rotate-180" : ""
+                        }`}
+                      />
+                    </button>
+                    {showQuotTechniciansDropdown && (
+                      <div className="absolute z-20 mt-1 w-full rounded-lg border border-slate-200 bg-white p-2 shadow-lg">
+                        <div className="grid grid-cols-1 gap-2">
+                          {technicianOptions.map((tech) => {
+                            const checked = quotTechnicianIds.includes(tech.id);
+                            return (
+                              <button
+                                key={tech.id}
+                                type="button"
+                                onClick={() =>
+                                  setQuotTechnicianIds((prev) =>
+                                    checked
+                                      ? prev.filter((id) => id !== tech.id)
+                                      : [...prev, tech.id]
+                                  )
+                                }
+                                className={`flex items-center justify-between rounded-lg border px-3 py-2 text-left text-sm transition-colors ${
+                                  checked
+                                    ? "border-brand bg-brand-50 text-brand"
+                                    : "border-slate-200 bg-white text-slate-700 hover:border-slate-300"
+                                }`}
+                              >
+                                <span className="font-medium">{tech.name}</span>
+                                <span
+                                  className={`inline-flex h-4 w-4 items-center justify-center rounded border text-[10px] font-bold ${
+                                    checked
+                                      ? "border-brand bg-brand text-white"
+                                      : "border-slate-300 text-transparent"
+                                  }`}
+                                >
+                                  ✓
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
                 </div>
                 <div>
                   <div className="flex items-center justify-between gap-3">
@@ -1196,6 +1300,12 @@ export default function TechnicianReportsPage() {
                       <p className="text-sm text-red-700">{qData.adminComment}</p>
                     </div>
                   )}
+                  {qData.clientComment && (
+                    <div className="rounded-md border border-amber-200 bg-amber-50 p-2">
+                      <p className="text-xs font-medium text-amber-700">Client Rejection Note</p>
+                      <p className="text-sm text-amber-700">{qData.clientComment}</p>
+                    </div>
+                  )}
                   <div>
                     <p className="text-xs font-medium text-slate-500 mb-1">Materials Needed</p>
                     <p className="text-sm text-slate-700 whitespace-pre-wrap">{qData.materials}</p>
@@ -1321,8 +1431,14 @@ export default function TechnicianReportsPage() {
               </label>
             </div>
             {!canSendSelectedReportToClient && (
-              <p className="text-xs text-amber-600">
-                Client send is disabled until this quotation is admin approved and has a selected client.
+              <p className="flex gap-2 text-xs text-amber-700">
+                <Info
+                  className="mt-0.5 h-4 w-4 shrink-0 text-amber-600"
+                  aria-hidden
+                />
+                <span>
+                This must be reviewed by the admin prior to enabling client unlock requests.
+                </span>
               </p>
             )}
             <div className="flex flex-wrap justify-end gap-2">

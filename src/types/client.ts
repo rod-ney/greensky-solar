@@ -33,6 +33,10 @@ export interface Booking {
   lat?: number;
   lng?: number;
   addressId?: string;
+  /** Average monthly Meralco bill (PHP) from the linked saved address, when the booking used one. */
+  addressMonthlyBill?: number;
+  /** Appliances on file for the linked saved address. */
+  addressAppliances?: Appliance[];
   projectId?: string;
 }
 

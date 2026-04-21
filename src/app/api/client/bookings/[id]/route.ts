@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import {
   deleteClientBookingInDb,
+  getBookingStatusFromDb,
   updateClientBookingInDb,
   bookingBelongsToUser,
   getBookingUserId,
@@ -19,7 +20,8 @@ export async function PATCH(request: Request, context: RouteContext) {
   const auth = await requireAuth();
   if (auth instanceof NextResponse) return auth;
   const { id } = await context.params;
-  if (auth.role !== "admin" && auth.role !== "technician") {
+  const isClient = auth.role !== "admin" && auth.role !== "technician";
+  if (isClient) {
     const owns = await bookingBelongsToUser(id, auth.userId);
     if (!owns) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
@@ -29,6 +31,19 @@ export async function PATCH(request: Request, context: RouteContext) {
   if (!result.success) return result.response;
   const body = result.data;
   try {
+    if (isClient) {
+      const currentStatus = await getBookingStatusFromDb(id);
+      if (!currentStatus) {
+        return NextResponse.json({ error: "Booking not found." }, { status: 404 });
+      }
+      if (currentStatus === "cancelled") {
+        return NextResponse.json(
+          { error: "This booking is already cancelled and can no longer be changed." },
+          { status: 400 }
+        );
+      }
+    }
+
     if (body.date && body.time && isPastDateTime(body.date, body.time)) {
       return NextResponse.json(
         { error: "Cannot reschedule to a date and time in the past." },
