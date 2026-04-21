@@ -4,8 +4,17 @@
  * Falls back to in-memory when Redis is not configured (dev/local).
  */
 
-const windowMs = 60 * 1000; // 1 minute
-const maxRequests = 10; // 10 requests per minute per key
+import { Ratelimit } from "@upstash/ratelimit";
+import { Redis } from "@upstash/redis";
+
+type RateLimitOptions = {
+  maxRequests?: number;
+  windowSeconds?: number;
+  prefix?: string;
+};
+
+const DEFAULT_MAX_REQUESTS = 10;
+const DEFAULT_WINDOW_SECONDS = 60;
 
 // In-memory fallback store
 const memoryStore = new Map<string, { count: number; resetAt: number }>();
@@ -17,7 +26,12 @@ function pruneMemory() {
   }
 }
 
-function checkRateLimitMemory(key: string): { allowed: boolean; remaining: number } {
+function checkRateLimitMemory(
+  key: string,
+  maxRequests: number,
+  windowSeconds: number
+): { allowed: boolean; remaining: number } {
+  const windowMs = windowSeconds * 1000;
   const now = Date.now();
   if (memoryStore.size > 1000) pruneMemory();
 
@@ -39,43 +53,55 @@ function checkRateLimitMemory(key: string): { allowed: boolean; remaining: numbe
 }
 
 // Upstash Redis rate limiter (lazy init)
-let upstashLimiter: {
-  limit: (identifier: string) => Promise<{ success: boolean; remaining: number }>;
-} | null = null;
+const upstashLimiters = new Map<string, Ratelimit>();
 
-function getUpstashLimiter() {
-  if (upstashLimiter) return upstashLimiter;
+function getLimiterSignature(maxRequests: number, windowSeconds: number): string {
+  return `${maxRequests}:${windowSeconds}`;
+}
+
+function getUpstashLimiter(maxRequests: number, windowSeconds: number): Ratelimit | null {
+  const signature = getLimiterSignature(maxRequests, windowSeconds);
+  const existing = upstashLimiters.get(signature);
+  if (existing) return existing;
+
   const url = process.env.UPSTASH_REDIS_REST_URL;
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
   if (!url || !token) return null;
 
   try {
-    const { Ratelimit } = require("@upstash/ratelimit");
-    const { Redis } = require("@upstash/redis");
     const redis = new Redis({ url, token });
-    upstashLimiter = new Ratelimit({
+    const limiter = new Ratelimit({
       redis,
-      limiter: Ratelimit.slidingWindow(maxRequests, "60 s"),
+      limiter: Ratelimit.slidingWindow(maxRequests, `${windowSeconds} s`),
     });
-    return upstashLimiter;
+
+    upstashLimiters.set(signature, limiter);
+    return limiter;
   } catch {
     return null;
   }
 }
 
-export async function checkRateLimit(key: string): Promise<{ allowed: boolean; remaining: number }> {
-  const limiter = getUpstashLimiter();
+export async function checkRateLimit(
+  key: string,
+  options: RateLimitOptions = {}
+): Promise<{ allowed: boolean; remaining: number }> {
+  const maxRequests = options.maxRequests ?? DEFAULT_MAX_REQUESTS;
+  const windowSeconds = options.windowSeconds ?? DEFAULT_WINDOW_SECONDS;
+  const namespacedKey = options.prefix ? `${options.prefix}:${key}` : key;
+
+  const limiter = getUpstashLimiter(maxRequests, windowSeconds);
   if (limiter) {
     try {
-      const result = await limiter.limit(key);
+      const result = await limiter.limit(namespacedKey);
       return {
         allowed: result.success,
         remaining: result.remaining,
       };
     } catch {
       // Redis failed - fallback to memory
-      return checkRateLimitMemory(key);
+      return checkRateLimitMemory(namespacedKey, maxRequests, windowSeconds);
     }
   }
-  return checkRateLimitMemory(key);
+  return checkRateLimitMemory(namespacedKey, maxRequests, windowSeconds);
 }
