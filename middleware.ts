@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
 const PUBLIC_PATHS = [
+  "/",
   "/login",
   "/register",
   "/about",
@@ -32,12 +33,6 @@ export function middleware(request: NextRequest) {
   const isLoggedIn = request.cookies.get("gs_auth")?.value === "1";
   const role = request.cookies.get("gs_role")?.value;
   const homePath = getHomePathByRole(role);
-
-  if (pathname === "/") {
-    return NextResponse.redirect(
-      new URL(isLoggedIn ? homePath : "/login", request.url)
-    );
-  }
 
   if (!isPublicPath(pathname) && !isLoggedIn) {
     return NextResponse.redirect(new URL("/login", request.url));
@@ -78,5 +73,6 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
+  // Exclude static assets from middleware so files in /public resolve normally.
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|.*\\..*).*)"],
 };
