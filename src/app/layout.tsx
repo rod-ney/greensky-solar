@@ -15,10 +15,8 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "Greensky Solar",
-  description: "Expert solar panel installation. Free site inspection. Save up to 70% on electricity. Book your consultation today.",
-  icons: {
-    icon: "/logo_greensky.png",
-  },
+  description:
+    "Expert solar panel installation. Free site inspection. Save up to 70% on electricity. Book your consultation today.",
 };
 
 export default function RootLayout({

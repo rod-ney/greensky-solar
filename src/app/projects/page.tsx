@@ -13,7 +13,9 @@ import {
   Trash2,
   ShieldCheck,
   ChevronDown,
+  FolderKanban,
 } from "lucide-react";
+import WorkspaceEmpty from "@/components/projects/WorkspaceEmpty";
 import Button from "@/components/ui/Button";
 import StatusBadge from "@/components/ui/StatusBadge";
 import ProgressBar from "@/components/ui/ProgressBar";
@@ -232,8 +234,29 @@ export default function ProjectsPage() {
         </div>
       </div>
 
-      {/* Grid View */}
-      {view === "grid" ? (
+      {filteredProjects.length === 0 ? (
+        <WorkspaceEmpty
+          icon={FolderKanban}
+          title={allProjects.length === 0 ? "No projects yet" : "No projects match"}
+          description={
+            allProjects.length === 0
+              ? "Create a project from an approved quotation or manually to start scheduling installs, tasks, and team assignments."
+              : "Try another status filter or clear your search to see all projects."
+          }
+        >
+          {allProjects.length > 0 ? (
+            <Button
+              variant="outline"
+              onClick={() => {
+                setSearchQuery("");
+                setFilterStatus("all");
+              }}
+            >
+              Clear filters
+            </Button>
+          ) : null}
+        </WorkspaceEmpty>
+      ) : view === "grid" ? (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
           {filteredProjects.map((project: Project) => (
             <div

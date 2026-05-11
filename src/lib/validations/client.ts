@@ -88,6 +88,8 @@ export const createDocumentSchema = z.object({
   fileSize: z.string().min(1, "File size is required").max(50),
   uploadedAt: z.string().min(1, "Upload date is required"),
   status: z.enum(["active", "expired", "draft"]).default("active"),
+  approvalStatus: documentApprovalStatus.optional(),
+  fileUrl: z.string().max(500).optional(),
 });
 
 export const updateDocumentSchema = z.object({

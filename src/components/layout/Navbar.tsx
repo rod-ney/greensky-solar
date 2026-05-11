@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { Search, UserCircle2, LogOut, PanelLeft } from "lucide-react";
 import {
@@ -10,6 +11,7 @@ import {
   useSessionUser,
 } from "@/lib/client-session";
 import NotificationBell from "@/components/profile/NotificationBell";
+import { APP_ICON } from "@/lib/app-icon";
 
 const pageTitles: Record<string, string> = {
   "/dashboard": "Dashboard",
@@ -23,6 +25,7 @@ const pageTitles: Record<string, string> = {
   "/inventory": "Inventory",
   "/users": "User Management",
   "/reports": "Reports",
+  "/compliance-tracker": "Compliance tracker",
 };
 
 function getPageTitle(pathname: string): string {
@@ -75,6 +78,17 @@ export default function Navbar({ sidebarCollapsed, onToggleSidebar }: NavbarProp
           >
             <PanelLeft className="h-5 w-5" />
           </button>
+        )}
+        {sidebarCollapsed && (
+          <Link href="/" className="shrink-0" title="GreenSky Solar Energy">
+            <Image
+              src={APP_ICON}
+              alt="GreenSky Solar Energy"
+              width={40}
+              height={40}
+              className="h-9 w-9 object-contain"
+            />
+          </Link>
         )}
         <h2 className="text-lg font-semibold text-slate-900">{title}</h2>
       </div>

@@ -9,7 +9,10 @@ import {
   Clock,
   Circle,
   ArrowRight,
+  FolderKanban,
+  ClipboardList,
 } from "lucide-react";
+import WorkspaceEmpty from "@/components/projects/WorkspaceEmpty";
 import StatusBadge from "@/components/ui/StatusBadge";
 import ProgressBar from "@/components/ui/ProgressBar";
 import { formatDate } from "@/lib/format";
@@ -59,9 +62,11 @@ export default function TechnicianProjectsPage() {
 
       {/* Project Cards */}
       {myProjects.length === 0 ? (
-        <div className="rounded-xl border border-slate-200 bg-white py-16 text-center">
-          <p className="text-sm text-slate-500">No projects assigned yet.</p>
-        </div>
+        <WorkspaceEmpty
+          icon={FolderKanban}
+          title="No projects assigned yet"
+          description="Once a coordinator assigns you to an install, projects and your tasks will show up here."
+        />
       ) : (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           {myProjects.map((project) => {
@@ -122,9 +127,12 @@ export default function TechnicianProjectsPage() {
                   </h4>
                   <div className="space-y-2">
                     {myTasks.length === 0 ? (
-                      <p className="text-xs text-slate-400">
-                        No tasks assigned in this project
-                      </p>
+                      <WorkspaceEmpty
+                        variant="compact"
+                        icon={ClipboardList}
+                        title="No tasks in this job"
+                        description="Open the project when your lead assigns work to you."
+                      />
                     ) : (
                       myTasks.map((task) => (
                         <div

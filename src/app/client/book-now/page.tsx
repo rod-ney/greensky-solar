@@ -18,7 +18,7 @@ import Modal from "@/components/ui/Modal";
 import { formatDate } from "@/lib/format";
 import { getTodayInManila, isPastDateTime } from "@/lib/date-utils";
 import { toast } from "@/lib/toast";
-import { SERVICE_OPTIONS } from "@/lib/constants";
+import { BOOK_NOW_SERVICE_OPTIONS, SERVICE_LABELS } from "@/lib/constants";
 import type { SavedAddress, ServiceType, TimeSlot, Booking } from "@/types/client";
 
 const MONTHS = [
@@ -87,7 +87,7 @@ export default function BookNowPage() {
 
   const selectedAddress = savedAddresses.find((a) => a.id === selectedAddressId);
   const selectedServiceLabels = selectedServices
-    .map((service) => SERVICE_OPTIONS.find((s) => s.value === service)?.label)
+    .map((service) => SERVICE_LABELS[service])
     .filter(Boolean)
     .join(", ");
   const toggleService = useCallback((service: ServiceType) => {
@@ -423,8 +423,7 @@ export default function BookNowPage() {
                     {selectedServices.length > 0 ? (
                       <span className="flex flex-wrap gap-1.5 pr-3">
                         {selectedServices.map((service) => {
-                          const label =
-                            SERVICE_OPTIONS.find((opt) => opt.value === service)?.label ?? service;
+                          const label = SERVICE_LABELS[service] ?? service;
                           return (
                             <span
                               key={service}
@@ -447,7 +446,7 @@ export default function BookNowPage() {
                   {showServicesDropdown && (
                     <div className="absolute z-20 mt-1 w-full rounded-lg border border-slate-200 bg-white p-2 shadow-lg">
                       <div className="grid grid-cols-1 gap-2">
-                        {SERVICE_OPTIONS.map((service) => {
+                        {BOOK_NOW_SERVICE_OPTIONS.map((service) => {
                           const checked = selectedServices.includes(service.value as ServiceType);
                           return (
                             <button

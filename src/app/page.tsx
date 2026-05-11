@@ -20,6 +20,7 @@ import {
   Phone,
 } from "lucide-react";
 import LandingHeader from "@/components/layout/LandingHeader";
+import { APP_ICON } from "@/lib/app-icon";
 import ChatBot from "@/components/ChatBot";
 import ScrollToTop from "@/components/ScrollToTop";
 import AnimatedSection from "@/components/landing/AnimatedSection";
@@ -375,11 +376,11 @@ export default function LandingPage() {
             <div className="flex flex-col items-center">
               <Link href="/" className="flex justify-center shrink-0">
                 <Image
-                  src="/logo_greensky.png"
+                  src={APP_ICON}
                   alt="GreenSky Solar Energy"
-                  width={240}
-                  height={72}
-                  className="h-24 w-auto object-contain opacity-95"
+                  width={112}
+                  height={112}
+                  className="h-24 w-24 object-contain opacity-95 [filter:drop-shadow(0_4px_24px_rgba(0,0,0,0.45))]"
                 />
               </Link>
               <p className="mt-3 text-sm text-slate-400 max-w-xs text-center">

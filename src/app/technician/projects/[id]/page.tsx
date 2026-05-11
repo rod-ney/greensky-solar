@@ -9,11 +9,13 @@ import {
   CheckCircle2,
   Circle,
   Clock,
+  ClipboardList,
   Edit2,
   Filter,
   MapPin,
   Users,
 } from "lucide-react";
+import WorkspaceEmpty from "@/components/projects/WorkspaceEmpty";
 import Modal from "@/components/ui/Modal";
 import ConfirmModal from "@/components/ui/ConfirmModal";
 import Button from "@/components/ui/Button";
@@ -311,12 +313,22 @@ export default function TechnicianProjectDetailPage() {
           </div>
           <div className="divide-y divide-slate-100">
             {myTasks.length === 0 ? (
-              <div className="py-10 text-center text-sm text-slate-500">
-                No tasks assigned to you yet.
+              <div className="p-5">
+                <WorkspaceEmpty
+                  variant="compact"
+                  icon={ClipboardList}
+                  title="Nothing assigned to you yet"
+                  description="Your project lead will attach tasks to your name when it is time for you to work this site."
+                />
               </div>
             ) : visibleMyTasksByDay.length === 0 ? (
-              <div className="py-10 text-center text-sm text-slate-500">
-                No tasks for this day.
+              <div className="p-5">
+                <WorkspaceEmpty
+                  variant="compact"
+                  icon={Filter}
+                  title="No tasks for this day"
+                  description='Open the day filter and choose "All", or pick another scheduled day.'
+                />
               </div>
             ) : (
               visibleMyTasksByDay.map((group) => (
@@ -411,30 +423,50 @@ export default function TechnicianProjectDetailPage() {
             </div>
           </div>
           <div className="divide-y divide-slate-100">
-            {visibleAllTasksByDay.map((group) => (
-              <div key={group.dateKey}>
-                <div className="px-5 py-2 text-xs font-semibold text-slate-600">
-                  Day {dayNumberFromProjectStart(group.dateKey) ?? "?"} {formatDate(group.dateKey)}{" "}
-                  {group.tasks.length} task{group.tasks.length !== 1 ? "s" : ""}
-                </div>
-                <div className="divide-y divide-slate-100">
-                  {group.tasks.map((task) => (
-                    <div key={task.id} className="px-5 py-4">
-                      <div className="flex items-center gap-2">
-                        <p className="text-sm font-medium text-slate-900">{task.title}</p>
-                        <StatusBadge status={task.priority} />
-                        <span className="ml-auto">
-                          <StatusBadge status={task.status} />
-                        </span>
-                      </div>
-                      <p className="mt-1 text-xs text-slate-500">
-                        Assigned to: {task.assignedTo ? (technicians.find((t) => t.id === task.assignedTo)?.name ?? "Unknown") : "Unassigned"}
-                      </p>
-                    </div>
-                  ))}
-                </div>
+            {tasks.length === 0 ? (
+              <div className="p-6">
+                <WorkspaceEmpty
+                  variant="compact"
+                  icon={ClipboardList}
+                  title="No project tasks yet"
+                  description="The install schedule will show here after tasks are created on this project."
+                />
               </div>
-            ))}
+            ) : visibleAllTasksByDay.length === 0 ? (
+              <div className="p-6">
+                <WorkspaceEmpty
+                  variant="compact"
+                  icon={Filter}
+                  title="No tasks for this day"
+                  description='Use the day filter and choose "All" to see everything on the roster.'
+                />
+              </div>
+            ) : (
+              visibleAllTasksByDay.map((group) => (
+                <div key={group.dateKey}>
+                  <div className="px-5 py-2 text-xs font-semibold text-slate-600">
+                    Day {dayNumberFromProjectStart(group.dateKey) ?? "?"} {formatDate(group.dateKey)}{" "}
+                    {group.tasks.length} task{group.tasks.length !== 1 ? "s" : ""}
+                  </div>
+                  <div className="divide-y divide-slate-100">
+                    {group.tasks.map((task) => (
+                      <div key={task.id} className="px-5 py-4">
+                        <div className="flex items-center gap-2">
+                          <p className="text-sm font-medium text-slate-900">{task.title}</p>
+                          <StatusBadge status={task.priority} />
+                          <span className="ml-auto">
+                            <StatusBadge status={task.status} />
+                          </span>
+                        </div>
+                        <p className="mt-1 text-xs text-slate-500">
+                          Assigned to: {task.assignedTo ? (technicians.find((t) => t.id === task.assignedTo)?.name ?? "Unknown") : "Unassigned"}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))
+            )}
           </div>
         </div>
       </div>

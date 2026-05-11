@@ -14,6 +14,7 @@ import {
   XCircle,
   ClipboardList,
 } from "lucide-react";
+import WorkspaceEmpty from "@/components/projects/WorkspaceEmpty";
 import StatusBadge from "@/components/ui/StatusBadge";
 import ProgressBar from "@/components/ui/ProgressBar";
 import { formatDate } from "@/lib/format";
@@ -143,10 +144,11 @@ export default function ClientProjectDetailPage() {
         >
           <ArrowLeft className="h-4 w-4" /> Back to Projects
         </button>
-        <div className="rounded-2xl border border-slate-200 bg-white py-16 text-center">
-          <ClipboardList className="mx-auto h-10 w-10 text-slate-300 mb-3" />
-          <p className="text-sm text-slate-500">Project not found</p>
-        </div>
+        <WorkspaceEmpty
+          icon={ClipboardList}
+          title="Project not found"
+          description="This link may be outdated, or you no longer have access. Use Back to pick another project."
+        />
       </div>
     );
   }
@@ -234,13 +236,13 @@ export default function ClientProjectDetailPage() {
       </div>
 
       {/* ====== Timeline (daily completion view) ====== */}
-      {(timelineDays.length > 0 || timelineByStatus.length > 0) && (
-        <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden">
-          <div className="flex flex-col gap-3 border-b border-slate-100 bg-slate-50/50 p-5 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <h2 className="text-base font-semibold text-slate-900">Timeline</h2>
-              <p className="text-xs text-slate-500 mt-0.5">Track work by day or by task status</p>
-            </div>
+      <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden">
+        <div className="flex flex-col gap-3 border-b border-slate-100 bg-slate-50/50 p-5 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="text-base font-semibold text-slate-900">Timeline</h2>
+            <p className="text-xs text-slate-500 mt-0.5">Track work by day or by task status</p>
+          </div>
+          {filteredTasks.length > 0 ? (
             <div className="inline-flex rounded-lg border border-slate-200 bg-white p-1">
               <button
                 onClick={() => setTimelineCategory("day")}
@@ -263,85 +265,96 @@ export default function ClientProjectDetailPage() {
                 By Status
               </button>
             </div>
-          </div>
-
-          <div className="p-5 space-y-4">
-            {timelineCategory === "day" &&
-              timelineDays.map((day) => (
-                <div key={day.dateKey} className="rounded-xl border border-slate-200 overflow-hidden">
-                  <div className="flex flex-wrap items-center gap-2 bg-slate-50 px-4 py-2.5">
-                    <span className="rounded-full bg-white px-2 py-0.5 text-[11px] font-semibold text-slate-700 ring-1 ring-slate-200">
-                      Day {day.dayNumber ?? "?"}
-                    </span>
-                    <span className="text-sm font-semibold text-slate-900">
-                      {new Date(`${day.dateKey}T00:00:00`).toLocaleDateString("en-US", {
-                        month: "short",
-                        day: "numeric",
-                        year: "numeric",
-                      })}
-                    </span>
-                    <span className="text-xs font-medium text-slate-500">
-                      {day.tasks.length} task{day.tasks.length !== 1 ? "s" : ""}
-                    </span>
-                  </div>
-                  <div className="divide-y divide-slate-100">
-                    {day.tasks.map((task, taskIndex) => (
-                      <div
-                        key={`${day.dateKey}-${task.id}-${taskIndex}`}
-                        className="flex items-start justify-between gap-3 bg-white px-4 py-3"
-                      >
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="flex-shrink-0">{taskStatusIcons[task.status]}</span>
-                            <p className="text-sm font-medium text-slate-900">{task.title}</p>
-                            <StatusBadge status={task.priority} size="sm" />
-                          </div>
-                          <p className="text-xs text-slate-500 mt-0.5">
-                            Assigned to <span className="font-medium text-slate-700">{task.assignedToName}</span>
-                          </p>
-                        </div>
-                        <StatusBadge status={task.status} size="sm" />
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ))}
-
-            {timelineCategory === "status" &&
-              timelineByStatus.map((group) => (
-                <div key={group.status} className="rounded-xl border border-slate-200 overflow-hidden">
-                  <div className="flex items-center justify-between bg-slate-50 px-4 py-2.5">
-                    <p className="text-sm font-semibold text-slate-900">{group.label}</p>
-                    <span className="text-xs font-medium text-slate-500">{group.tasks.length} task(s)</span>
-                  </div>
-                  <div className="divide-y divide-slate-100">
-                    {group.tasks.map((task, taskIndex) => (
-                      <div
-                        key={`${group.status}-${task.id}-${taskIndex}`}
-                        className="flex items-start justify-between gap-3 bg-white px-4 py-3"
-                      >
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="flex-shrink-0">{taskStatusIcons[task.status]}</span>
-                            <p className="text-sm font-medium text-slate-900">{task.title}</p>
-                            <StatusBadge status={task.priority} size="sm" />
-                          </div>
-                          <p className="text-xs text-slate-500 mt-0.5">
-                            {taskProjectDayNumber(task.dueDate) != null
-                              ? `Day ${taskProjectDayNumber(task.dueDate)} · `
-                              : ""}
-                            Due: {formatDate(task.dueDate)} · Assigned to: {task.assignedToName}
-                          </p>
-                        </div>
-                        <StatusBadge status={task.status} size="sm" />
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ))}
-          </div>
+          ) : null}
         </div>
-      )}
+
+        <div className="p-5 space-y-4">
+          {filteredTasks.length === 0 ? (
+            <WorkspaceEmpty
+              variant="compact"
+              icon={ClipboardList}
+              title="No tasks scheduled yet"
+              description="Your project team adds milestones here as installation moves forward. Check back soon, or reach out through your installer if you have questions."
+            />
+          ) : (
+            <>
+              {timelineCategory === "day" &&
+                timelineDays.map((day) => (
+                  <div key={day.dateKey} className="rounded-xl border border-slate-200 overflow-hidden">
+                    <div className="flex flex-wrap items-center gap-2 bg-slate-50 px-4 py-2.5">
+                      <span className="rounded-full bg-white px-2 py-0.5 text-[11px] font-semibold text-slate-700 ring-1 ring-slate-200">
+                        Day {day.dayNumber ?? "?"}
+                      </span>
+                      <span className="text-sm font-semibold text-slate-900">
+                        {new Date(`${day.dateKey}T00:00:00`).toLocaleDateString("en-US", {
+                          month: "short",
+                          day: "numeric",
+                          year: "numeric",
+                        })}
+                      </span>
+                      <span className="text-xs font-medium text-slate-500">
+                        {day.tasks.length} task{day.tasks.length !== 1 ? "s" : ""}
+                      </span>
+                    </div>
+                    <div className="divide-y divide-slate-100">
+                      {day.tasks.map((task, taskIndex) => (
+                        <div
+                          key={`${day.dateKey}-${task.id}-${taskIndex}`}
+                          className="flex items-start justify-between gap-3 bg-white px-4 py-3"
+                        >
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="flex-shrink-0">{taskStatusIcons[task.status]}</span>
+                              <p className="text-sm font-medium text-slate-900">{task.title}</p>
+                              <StatusBadge status={task.priority} size="sm" />
+                            </div>
+                            <p className="text-xs text-slate-500 mt-0.5">
+                              Assigned to <span className="font-medium text-slate-700">{task.assignedToName}</span>
+                            </p>
+                          </div>
+                          <StatusBadge status={task.status} size="sm" />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+
+              {timelineCategory === "status" &&
+                timelineByStatus.map((group) => (
+                  <div key={group.status} className="rounded-xl border border-slate-200 overflow-hidden">
+                    <div className="flex items-center justify-between bg-slate-50 px-4 py-2.5">
+                      <p className="text-sm font-semibold text-slate-900">{group.label}</p>
+                      <span className="text-xs font-medium text-slate-500">{group.tasks.length} task(s)</span>
+                    </div>
+                    <div className="divide-y divide-slate-100">
+                      {group.tasks.map((task, taskIndex) => (
+                        <div
+                          key={`${group.status}-${task.id}-${taskIndex}`}
+                          className="flex items-start justify-between gap-3 bg-white px-4 py-3"
+                        >
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="flex-shrink-0">{taskStatusIcons[task.status]}</span>
+                              <p className="text-sm font-medium text-slate-900">{task.title}</p>
+                              <StatusBadge status={task.priority} size="sm" />
+                            </div>
+                            <p className="text-xs text-slate-500 mt-0.5">
+                              {taskProjectDayNumber(task.dueDate) != null
+                                ? `Day ${taskProjectDayNumber(task.dueDate)} · `
+                                : ""}
+                              Due: {formatDate(task.dueDate)} · Assigned to: {task.assignedToName}
+                            </p>
+                          </div>
+                          <StatusBadge status={task.status} size="sm" />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+            </>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

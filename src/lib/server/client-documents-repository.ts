@@ -13,11 +13,12 @@ type DocumentRow = {
   approval_status: Document["approvalStatus"] | null;
   report_id: string | null;
   linked_report_type: string | null;
+  file_url: string | null;
 };
 
 const DOCUMENT_SELECT = `
   SELECT d.id, d.title, d.type, d.file_size, d.uploaded_at, d.project_name, d.status, d.approval_status, d.report_id,
-         r.type AS linked_report_type
+         r.type AS linked_report_type, d.file_url
   FROM documents d
   LEFT JOIN reports r ON r.id = d.report_id
 `;
@@ -41,6 +42,7 @@ function mapDocument(row: DocumentRow): Document {
     approvalStatus: row.approval_status ?? undefined,
     reportId: row.report_id ?? undefined,
     linkedReportType: mapLinkedReportType(row.linked_report_type),
+    fileUrl: row.file_url ?? undefined,
   };
 }
 
@@ -73,8 +75,8 @@ export async function addClientDocumentToDb(
 
   await dbQuery(
     `
-      INSERT INTO documents (id, title, type, file_size, uploaded_at, project_name, status, approval_status, user_id, report_id)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      INSERT INTO documents (id, title, type, file_size, uploaded_at, project_name, status, approval_status, user_id, report_id, file_url)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
     `,
     [
       nextId,
@@ -87,6 +89,7 @@ export async function addClientDocumentToDb(
       doc.approvalStatus ?? null,
       userId ?? null,
       reportId ?? null,
+      doc.fileUrl ?? null,
     ]
   );
 

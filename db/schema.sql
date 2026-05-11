@@ -397,3 +397,36 @@ CREATE TABLE IF NOT EXISTS inventory_movements (
 CREATE INDEX IF NOT EXISTS idx_inventory_movements_item ON inventory_movements(inventory_item_id);
 CREATE INDEX IF NOT EXISTS idx_inventory_movements_project ON inventory_movements(project_id);
 CREATE INDEX IF NOT EXISTS idx_inventory_movements_created ON inventory_movements(created_at DESC);
+
+-- Client compliance timeline (permits & requirements)
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS file_url TEXT;
+
+CREATE TABLE IF NOT EXISTS user_compliance_preferences (
+  user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  in_subdivision BOOLEAN NOT NULL DEFAULT FALSE,
+  wants_net_metering BOOLEAN NOT NULL DEFAULT FALSE,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS compliance_timeline_items (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  requirement_key TEXT NOT NULL,
+  title TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  due_date DATE NOT NULL,
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  supplied_by TEXT NOT NULL DEFAULT 'client' CHECK (supplied_by IN ('client', 'admin')),
+  is_optional BOOLEAN NOT NULL DEFAULT FALSE,
+  subdivision_only BOOLEAN NOT NULL DEFAULT FALSE,
+  net_metering_only BOOLEAN NOT NULL DEFAULT FALSE,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'submitted', 'approved', 'rejected', 'waived')),
+  document_id TEXT REFERENCES documents(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (user_id, project_id, requirement_key)
+);
+
+CREATE INDEX IF NOT EXISTS idx_compliance_timeline_user ON compliance_timeline_items(user_id);
+CREATE INDEX IF NOT EXISTS idx_compliance_timeline_project ON compliance_timeline_items(project_id);

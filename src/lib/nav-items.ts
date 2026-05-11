@@ -10,6 +10,7 @@ import {
   Package,
   Receipt,
   Bell,
+  ListChecks,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -41,6 +42,13 @@ export const navItems: NavItem[] = [
     description: "Track project progress and milestones.",
     href: "/projects",
     icon: FolderKanban,
+    category: "Operations",
+  },
+  {
+    label: "Compliance tracker",
+    description: "Client permits and compliance after site inspection.",
+    href: "/compliance-tracker",
+    icon: ListChecks,
     category: "Operations",
   },
   {

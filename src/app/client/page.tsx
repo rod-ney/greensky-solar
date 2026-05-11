@@ -15,6 +15,7 @@ import {
   Clock,
   ShieldCheck,
   ClipboardList,
+  ListChecks,
 } from "lucide-react";
 import type { Booking, Payment } from "@/types/client";
 import { useSessionUser } from "@/lib/client-session";
@@ -157,6 +158,16 @@ export default function ClientHomePage() {
             iconBg: "bg-teal-50",
             iconColor: "text-teal-600",
             stat: "View files",
+          },
+          {
+            label: "Compliance",
+            description: "Permits & certificates timeline with uploads",
+            href: "/client/compliance",
+            icon: ListChecks,
+            color: "bg-cyan-600",
+            iconBg: "bg-cyan-50",
+            iconColor: "text-cyan-600",
+            stat: "Due dates & files",
           },
           {
             label: "Warranty & Support",

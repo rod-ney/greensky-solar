@@ -5,6 +5,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { motion, AnimatePresence } from "framer-motion";
 import { Menu, X } from "lucide-react";
+import { APP_ICON } from "@/lib/app-icon";
 
 const NAV_LINKS = [
   { href: "/#home", label: "Home" },
@@ -22,11 +23,12 @@ export default function LandingHeader() {
         <div className="flex items-center justify-between h-16 lg:h-20">
           <Link href="/" className="flex items-center shrink-0 gap-2 sm:gap-3">
             <Image
-              src="/logo_greensky.png"
+              src={APP_ICON}
               alt="GreenSky Solar Energy"
-              width={160}
-              height={48}
-              className="h-10 w-auto object-contain lg:h-12"
+              width={52}
+              height={52}
+              priority
+              className="h-10 w-10 shrink-0 object-contain lg:h-12 lg:w-12"
             />
             <span className="text-lg sm:text-xl font-semibold tracking-tight">
               <span style={{ color: "#118c3a" }}>Greensky</span>

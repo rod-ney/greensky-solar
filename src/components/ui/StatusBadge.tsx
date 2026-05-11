@@ -20,6 +20,8 @@ const statusStyles: Record<string, string> = {
   // Report statuses
   approved: "bg-green-50 text-green-700 border-green-200",
   rejected: "bg-red-50 text-red-700 border-red-200",
+  submitted: "bg-amber-50 text-amber-800 border-amber-200",
+  waived: "bg-slate-100 text-slate-600 border-slate-200",
   // User statuses
   active: "bg-green-50 text-green-700 border-green-200",
   inactive: "bg-slate-50 text-slate-600 border-slate-200",
@@ -43,6 +45,8 @@ const statusLabels: Record<string, string> = {
   on_leave: "On Leave",
   approved: "Approved",
   rejected: "Rejected",
+  submitted: "Submitted",
+  waived: "Waived",
   active: "Active",
   inactive: "Inactive",
   low: "Low",

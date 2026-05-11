@@ -31,12 +31,7 @@ export default function AppShell({
   }
 
   return (
-    <div className="relative flex min-h-screen overflow-hidden bg-gradient-to-br from-slate-50 via-emerald-50/30 to-blue-50/40">
-      <div className="pointer-events-none absolute inset-0">
-        <div className="absolute -top-28 -left-24 h-80 w-80 rounded-full bg-brand/10 blur-3xl" />
-        <div className="absolute top-20 right-0 h-96 w-96 rounded-full bg-blue-200/25 blur-3xl" />
-        <div className="absolute bottom-0 left-1/3 h-72 w-72 rounded-full bg-emerald-200/20 blur-3xl" />
-      </div>
+    <div className="relative flex min-h-screen overflow-hidden bg-white">
       <Sidebar
         collapsed={sidebarCollapsed}
         onToggleCollapse={() => setSidebarCollapsed((p) => !p)}

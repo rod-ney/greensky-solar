@@ -1,5 +1,8 @@
 import type { BookingStatus, ServiceType } from "@/types/client";
 
+/** Public URL for the site logo (`public/logo_greensky.png`) */
+export const LOGO_PATH = "/logo_greensky.png" as const;
+
 /** Single source of truth for service type labels */
 export const SERVICE_LABELS: Record<ServiceType, string> = {
   site_inspection: "Site Inspection",
@@ -33,6 +36,12 @@ export const BOOKING_STATUS_OPTIONS: { value: BookingStatus | "all"; label: stri
 export const SERVICE_OPTIONS: { value: ServiceType; label: string }[] = (
   Object.entries(SERVICE_LABELS) as [ServiceType, string][]
 ).map(([value, label]) => ({ value, label }));
+
+/** Client Book Now UI: services clients can schedule (omit internal/full-project types). */
+export const BOOK_NOW_SERVICE_OPTIONS: { value: ServiceType; label: string }[] =
+  SERVICE_OPTIONS.filter(
+    ({ value }) => value !== "solar_panel_installation" && value !== "commissioning"
+  );
 
 /** Project status labels */
 export const PROJECT_STATUS_LABELS: Record<string, string> = {

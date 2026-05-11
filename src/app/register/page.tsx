@@ -6,6 +6,7 @@ import { useState } from "react";
 import Image from "next/image";
 import { Eye, EyeOff } from "lucide-react";
 import LandingHeader from "@/components/layout/LandingHeader";
+import { APP_ICON } from "@/lib/app-icon";
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -123,13 +124,14 @@ export default function RegisterPage() {
       >
         <div className="absolute inset-0 bg-brand/50" />
         <div className="relative z-10 flex flex-col items-center justify-center gap-6 text-center">
-          <Link href="/" className="flex flex-col items-center gap-4">
+          <Link href="/" className="group flex flex-col items-center gap-4">
             <Image
-              src="/logo_greensky.png"
+              src={APP_ICON}
               alt="GreenSky Solar Energy"
-              width={280}
-              height={168}
-              className="h-36 w-auto object-contain drop-shadow-lg"
+              width={176}
+              height={176}
+              priority
+              className="h-44 w-44 object-contain transition-transform duration-200 group-hover:scale-[1.02] [filter:drop-shadow(0_6px_20px_rgba(0,0,0,0.45))_drop-shadow(0_0_2px_rgba(255,255,255,0.35))]"
             />
           </Link>
           <p className="text-center text-white text-lg max-w-sm drop-shadow-sm">
@@ -142,13 +144,14 @@ export default function RegisterPage() {
       <div className="flex-1 min-h-0 flex flex-col overflow-y-auto px-6 py-12 sm:px-12 lg:px-16 bg-white">
         <div className="w-full max-w-md mx-auto">
           {/* Mobile logo */}
-          <Link href="/" className="lg:hidden flex items-center mb-8">
+          <Link href="/" className="lg:hidden mb-8 flex items-center">
             <Image
-              src="/logo_greensky.png"
+              src={APP_ICON}
               alt="GreenSky Solar Energy"
-              width={140}
-              height={42}
-              className="h-10 w-auto object-contain"
+              width={56}
+              height={56}
+              priority
+              className="h-14 w-14 object-contain [filter:drop-shadow(0_2px_10px_rgba(0,0,0,0.2))]"
             />
           </Link>
 

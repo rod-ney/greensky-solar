@@ -7,8 +7,10 @@ import {
   MapPin,
   Calendar,
   ArrowRight,
-  ClipboardList,
+  FolderKanban,
 } from "lucide-react";
+import WorkspaceEmpty from "@/components/projects/WorkspaceEmpty";
+import Button from "@/components/ui/Button";
 import StatusBadge from "@/components/ui/StatusBadge";
 import ProgressBar from "@/components/ui/ProgressBar";
 import { formatDate } from "@/lib/format";
@@ -138,14 +140,27 @@ export default function ClientProjectsPage() {
 
       {/* Project Cards Grid */}
       {filtered.length === 0 ? (
-        <div className="rounded-2xl border border-slate-200 bg-white py-16 text-center">
-          <ClipboardList className="mx-auto h-10 w-10 text-slate-300 mb-3" />
-          <p className="text-sm text-slate-500">
-            {projects.length === 0
-              ? "No projects assigned to you yet"
-              : "No projects match your filters"}
-          </p>
-        </div>
+        <WorkspaceEmpty
+          icon={FolderKanban}
+          title={projects.length === 0 ? "No projects yet" : "No matching projects"}
+          description={
+            projects.length === 0
+              ? "When your installer adds you to a project, it will show here with timelines, milestones, and progress."
+              : "Adjust your search or pick a different status chip to find a project."
+          }
+        >
+          {projects.length > 0 ? (
+            <Button
+              variant="outline"
+              onClick={() => {
+                setSearch("");
+                setStatusFilter("all");
+              }}
+            >
+              Clear filters
+            </Button>
+          ) : null}
+        </WorkspaceEmpty>
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {filtered.map((project) => (

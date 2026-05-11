@@ -132,4 +132,32 @@ export interface Document {
   reportId?: string;
   /** Linked report row type when this document was created from a report (e.g. sent quotation). */
   linkedReportType?: "service" | "quotation" | "revenue";
+  /** Public URL for uploaded files (e.g. compliance PDFs). */
+  fileUrl?: string;
+}
+
+export type ComplianceItemStatus = "pending" | "submitted" | "approved" | "rejected" | "waived";
+
+export interface ComplianceTimelineItem {
+  id: string;
+  projectId: string;
+  projectName: string;
+  requirementKey: string;
+  title: string;
+  description: string;
+  dueDate: string;
+  sortOrder: number;
+  suppliedBy: "client" | "admin";
+  isOptional: boolean;
+  subdivisionOnly: boolean;
+  netMeteringOnly: boolean;
+  status: ComplianceItemStatus;
+  documentId?: string;
+  fileUrl?: string;
+  documentTitle?: string;
+}
+
+export interface UserCompliancePreferences {
+  inSubdivision: boolean;
+  wantsNetMetering: boolean;
 }

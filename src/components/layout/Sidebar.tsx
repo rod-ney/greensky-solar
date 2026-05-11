@@ -9,6 +9,7 @@ import {
   getInitials,
   useSessionUser,
 } from "@/lib/client-session";
+import { APP_ICON } from "@/lib/app-icon";
 import { navItems, type NavItem } from "@/lib/nav-items";
 
 type SidebarProps = {
@@ -37,14 +38,14 @@ export default function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
 
       <div className="relative z-10 flex min-h-0 flex-1 flex-col">
         {/* Logo + Hide button */}
-        <div className="flex h-16 shrink-0 items-center justify-between border-b border-white/15 px-4">
-          <Link href="/" className="flex min-w-0 flex-1 items-center gap-2">
+        <div className="flex h-16 shrink-0 items-center justify-between border-b border-white/20 bg-black/30 px-4 backdrop-blur-sm">
+          <Link href="/" className="flex min-w-0 flex-1 items-center gap-3">
             <Image
-              src="/logo_greensky.png"
+              src={APP_ICON}
               alt="GreenSky Solar Energy"
-              width={140}
-              height={42}
-              className="h-9 w-auto shrink-0 object-contain"
+              width={56}
+              height={56}
+              className="h-11 w-11 shrink-0 object-contain [filter:drop-shadow(0_2px_6px_rgba(0,0,0,0.35))]"
             />
             <span className="min-w-0 truncate text-base font-semibold leading-tight">
               <span style={{ color: "white" }}>Greensky</span>

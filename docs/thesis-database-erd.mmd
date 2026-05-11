@@ -1,0 +1,72 @@
+%% GreenSky Solar — compact ERD for short bond / letter paper (8.5x11)
+%% Paste into https://mermaid.live → Actions → Export PNG/SVG (use 100–125% zoom if needed)
+%% Full column list: see db/schema.sql
+%%
+%%{init: {'themeVariables': {'fontSize': '11px', 'fontFamily': 'system-ui, sans-serif'}}}%%
+
+erDiagram
+  users ||--o{ password_reset_tokens : ""
+  users ||--o{ login_activity : ""
+  users ||--o{ audit_log : ""
+  users ||--o{ technicians : ""
+  users ||--o{ projects : ""
+  users ||--o{ bookings : ""
+  users ||--o{ payments : ""
+  users ||--o{ saved_addresses : ""
+  users ||--o{ documents : ""
+  users ||--o{ notifications : ""
+  users ||--o{ inventory_movements : ""
+  users ||--o{ project_inventory : ""
+  users ||--o| user_compliance_preferences : ""
+  users ||--o{ compliance_timeline_items : ""
+
+  technicians ||--o{ project_technicians : ""
+  projects ||--o{ project_technicians : ""
+  technicians ||--o{ tasks : ""
+
+  projects }o--o| technicians : ""
+  projects }o--o| bookings : ""
+  projects ||--o{ tasks : ""
+  projects ||--o{ calendar_events : ""
+  projects ||--o{ reports : ""
+  projects ||--o{ project_inventory : ""
+  projects ||--o{ inventory_movements : ""
+  projects ||--o{ compliance_timeline_items : ""
+
+  saved_addresses ||--o{ appliances : ""
+  users ||--o{ saved_addresses : ""
+  saved_addresses ||--o{ bookings : ""
+
+  inventory_items ||--o{ project_inventory : ""
+  inventory_items ||--o{ inventory_movements : ""
+
+  reports ||--o{ documents : ""
+  compliance_timeline_items }o--o| documents : ""
+
+  users { string id PK }
+  technicians { string id PK }
+  projects { string id PK }
+  project_technicians {
+    string project_id FK
+    string technician_id FK
+  }
+  tasks { string id PK }
+  bookings { string id PK }
+  payments { string id PK }
+  saved_addresses { string id PK }
+  appliances { string id PK }
+  inventory_items { string id PK }
+  project_inventory { string id PK }
+  inventory_movements { string id PK }
+  calendar_events { string id PK }
+  reports { string id PK }
+  documents { string id PK }
+  notifications { string id PK }
+  user_compliance_preferences { string user_id PK }
+  compliance_timeline_items { string id PK }
+  clients { string id PK }
+  support_tickets { string id PK }
+  password_reset_tokens { string id PK }
+  login_activity { string id PK }
+  audit_log { string id PK }
+  idempotency_keys { string key PK }
