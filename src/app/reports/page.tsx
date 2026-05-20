@@ -21,6 +21,10 @@ import Modal from "@/components/ui/Modal";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { getTodayInManila } from "@/lib/date-utils";
 import { toast } from "@/lib/toast";
+import {
+  REPORT_ATTACHMENT_ALLOWED_TYPES,
+  validateUploadFileSize,
+} from "@/lib/upload-constraints";
 import type { Project, Report, Technician } from "@/types";
 import type { DocumentType } from "@/types/client";
 import { downloadQuotationReportPdf } from "@/lib/pdf/quotation-report-pdf";
@@ -277,6 +281,26 @@ export default function ReportsPage() {
     if (bytes < 1024) return `${bytes} B`;
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
+  const handleAttachmentChange = (file: File | null) => {
+    if (!file) {
+      setCreateAttachment(null);
+      return;
+    }
+
+    const uploadError = validateUploadFileSize(
+      file,
+      REPORT_ATTACHMENT_ALLOWED_TYPES,
+      "Invalid file type. Use PDF, JPEG, or PNG."
+    );
+    if (uploadError) {
+      toast.error(uploadError);
+      setCreateAttachment(null);
+      return;
+    }
+
+    setCreateAttachment(file);
   };
 
   const handleSendReport = async () => {
@@ -934,7 +958,7 @@ export default function ReportsPage() {
                         <div>
                           <p className="mb-1 text-xs font-medium text-slate-500">Materials</p>
                           <div className="overflow-x-auto">
-                            <table className="w-full text-xs">
+                            <table className="w-full min-w-[700px] text-xs">
                               <thead>
                                 <tr className="text-left text-slate-500">
                                   <th className="pb-1">Description</th>
@@ -1199,7 +1223,10 @@ export default function ReportsPage() {
             </label>
             <input
               type="file"
-              onChange={(e) => setCreateAttachment(e.target.files?.[0] ?? null)}
+              onChange={(e) => {
+                handleAttachmentChange(e.target.files?.[0] ?? null);
+                e.target.value = "";
+              }}
               className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand file:mr-3 file:rounded-lg file:border-0 file:bg-brand-50 file:px-4 file:py-2 file:text-sm file:font-medium file:text-brand hover:file:bg-brand-100"
               accept=".pdf,.jpg,.jpeg,.png"
             />

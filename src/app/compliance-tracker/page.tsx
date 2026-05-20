@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowRight,
   Calendar,
@@ -14,6 +14,7 @@ import {
   Loader2,
   Mail,
   Plus,
+  Upload,
   User,
   X,
 } from "lucide-react";
@@ -22,6 +23,7 @@ import { toast } from "@/lib/toast";
 import type { AdminComplianceTrackerItem } from "@/types/compliance-admin";
 import StatusBadge from "@/components/ui/StatusBadge";
 import Button from "@/components/ui/Button";
+import { COMPLIANCE_ATTACHMENT_ALLOWED_TYPES, validateUploadFileSize } from "@/lib/upload-constraints";
 
 type CategoryKey =
   | "pending_review"
@@ -154,6 +156,8 @@ export default function ComplianceTrackerPage() {
   const [reviewingId, setReviewingId] = useState<string | null>(null);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [viewByProject, setViewByProject] = useState<Record<string, ViewMode>>({});
+  const [uploadingId, setUploadingId] = useState<string | null>(null);
+  const [uploadModalId, setUploadModalId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -205,6 +209,60 @@ export default function ComplianceTrackerPage() {
       toast.error("Update failed.");
     } finally {
       setReviewingId(null);
+    }
+  };
+
+  const uploadSolarDiagram = async (itemId: string, file: File) => {
+    const uploadError = validateUploadFileSize(
+      file,
+      COMPLIANCE_ATTACHMENT_ALLOWED_TYPES,
+      "Invalid file type. Use PDF, JPEG, PNG, or WebP."
+    );
+    if (uploadError) {
+      toast.error(uploadError);
+      return;
+    }
+
+    setUploadingId(itemId);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch(`/api/compliance-tracker/${itemId}/upload`, {
+        method: "POST",
+        body: fd,
+      });
+      const payload = (await res.json()) as { error?: string };
+      if (!res.ok) {
+        toast.error(payload.error ?? "Upload failed.");
+        return;
+      }
+      toast.success("Solar diagram uploaded successfully.");
+      setUploadModalId(null);
+      await load();
+    } catch {
+      toast.error("Upload failed.");
+    } finally {
+      setUploadingId(null);
+    }
+  };
+
+  const removeUploadedDiagram = async (itemId: string) => {
+    setUploadingId(itemId);
+    try {
+      const res = await fetch(`/api/compliance-tracker/${itemId}/upload`, {
+        method: "DELETE",
+      });
+      if (!res.ok) {
+        const j = (await res.json()) as { error?: string };
+        toast.error(j.error ?? "Could not remove diagram.");
+        return;
+      }
+      toast.success("Solar diagram removed.");
+      await load();
+    } catch {
+      toast.error("Could not remove diagram.");
+    } finally {
+      setUploadingId(null);
     }
   };
 
@@ -321,6 +379,11 @@ export default function ComplianceTrackerPage() {
               onViewModeChange={(m) => setProjectView(selectedGroup.projectId, m)}
               reviewingId={reviewingId}
               onReview={reviewItem}
+              uploadingId={uploadingId}
+              uploadModalId={uploadModalId}
+              onUploadModalChange={setUploadModalId}
+              onUploadSolarDiagram={uploadSolarDiagram}
+              onRemoveUploadedDiagram={removeUploadedDiagram}
             />
           ) : null}
         </div>
@@ -335,8 +398,13 @@ function ProjectSection(props: {
   onViewModeChange: (m: ViewMode) => void;
   reviewingId: string | null;
   onReview: (id: string, d: "approved" | "rejected") => void;
+  uploadingId: string | null;
+  uploadModalId: string | null;
+  onUploadModalChange: (id: string | null) => void;
+  onUploadSolarDiagram: (itemId: string, file: File) => void;
+  onRemoveUploadedDiagram: (itemId: string) => void;
 }) {
-  const { group, viewMode, onViewModeChange, reviewingId, onReview } = props;
+  const { group, viewMode, onViewModeChange, reviewingId, onReview, uploadingId, uploadModalId, onUploadModalChange, onUploadSolarDiagram, onRemoveUploadedDiagram } = props;
   const today = manilaToday();
 
   const { laneOverdue, laneActive, laneResolved, stats } = useMemo(() => {
@@ -493,6 +561,11 @@ function ProjectSection(props: {
               reviewingId={reviewingId}
               onReview={onReview}
               clientEmail={group.clientEmail}
+              uploadingId={uploadingId}
+              uploadModalId={uploadModalId}
+              onUploadModalChange={onUploadModalChange}
+              onUploadSolarDiagram={onUploadSolarDiagram}
+              onRemoveUploadedDiagram={onRemoveUploadedDiagram}
             />
             <KanbanLane
               title="Awaiting client"
@@ -502,6 +575,11 @@ function ProjectSection(props: {
               reviewingId={reviewingId}
               onReview={onReview}
               clientEmail={group.clientEmail}
+              uploadingId={uploadingId}
+              uploadModalId={uploadModalId}
+              onUploadModalChange={onUploadModalChange}
+              onUploadSolarDiagram={onUploadSolarDiagram}
+              onRemoveUploadedDiagram={onRemoveUploadedDiagram}
             />
             <KanbanLane
               title="Resolved"
@@ -511,6 +589,11 @@ function ProjectSection(props: {
               reviewingId={reviewingId}
               onReview={onReview}
               clientEmail={group.clientEmail}
+              uploadingId={uploadingId}
+              uploadModalId={uploadModalId}
+              onUploadModalChange={onUploadModalChange}
+              onUploadSolarDiagram={onUploadSolarDiagram}
+              onRemoveUploadedDiagram={onRemoveUploadedDiagram}
             />
           </div>
         )}
@@ -615,8 +698,13 @@ function KanbanLane(props: {
   reviewingId: string | null;
   onReview: (id: string, d: "approved" | "rejected") => void;
   clientEmail: string;
+  uploadingId: string | null;
+  uploadModalId: string | null;
+  onUploadModalChange: (id: string | null) => void;
+  onUploadSolarDiagram: (itemId: string, file: File) => void;
+  onRemoveUploadedDiagram: (itemId: string) => void;
 }) {
-  const { title, tone, items, today, reviewingId, onReview, clientEmail } = props;
+  const { title, tone, items, today, reviewingId, onReview, clientEmail, uploadingId, uploadModalId, onUploadModalChange, onUploadSolarDiagram, onRemoveUploadedDiagram } = props;
   const headCls =
     tone === "overdue"
       ? "text-red-700"
@@ -658,6 +746,11 @@ function KanbanLane(props: {
               reviewingId={reviewingId}
               onReview={onReview}
               clientEmail={clientEmail}
+              uploadingId={uploadingId}
+              uploadModalId={uploadModalId}
+              onUploadModalChange={onUploadModalChange}
+              onUploadSolarDiagram={onUploadSolarDiagram}
+              onRemoveUploadedDiagram={onRemoveUploadedDiagram}
             />
           ))
         )}
@@ -672,8 +765,13 @@ function KanbanCard(props: {
   reviewingId: string | null;
   onReview: (id: string, d: "approved" | "rejected") => void;
   clientEmail: string;
+  uploadingId: string | null;
+  uploadModalId: string | null;
+  onUploadModalChange: (id: string | null) => void;
+  onUploadSolarDiagram: (itemId: string, file: File) => void;
+  onRemoveUploadedDiagram: (itemId: string) => void;
 }) {
-  const { item, today, reviewingId, onReview, clientEmail } = props;
+  const { item, today, reviewingId, onReview, clientEmail, uploadingId, uploadModalId, onUploadModalChange, onUploadSolarDiagram, onRemoveUploadedDiagram } = props;
   const overdue = !isResolvedItem(item) && item.dueDate < today;
 
   const { label, badgeClass } = cardPrimaryBadge(item, overdue);
@@ -749,6 +847,46 @@ function KanbanCard(props: {
             <a href={remindHref} className="text-[10px] font-semibold text-brand hover:underline">
               Remind client →
             </a>
+          )}
+          {item.suppliedBy === "admin" && (
+            <>
+              {item.fileUrl && (
+                <a
+                  href={item.fileUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-[10px] font-semibold text-brand hover:underline"
+                >
+                  View diagram →
+                </a>
+              )}
+              <button
+                type="button"
+                onClick={() => onUploadModalChange(item.id)}
+                disabled={uploadingId === item.id}
+                className="text-[10px] font-semibold text-brand hover:underline disabled:opacity-50 cursor-pointer"
+              >
+                {uploadingId === item.id ? "…" : item.fileUrl ? "Update diagram" : "Upload diagram"}
+              </button>
+              {item.fileUrl && (
+                <button
+                  type="button"
+                  onClick={() => void onRemoveUploadedDiagram(item.id)}
+                  disabled={uploadingId === item.id}
+                  className="text-[10px] font-semibold text-red-600 hover:underline disabled:opacity-50 cursor-pointer"
+                >
+                  Remove
+                </button>
+              )}
+              {uploadModalId === item.id && (
+                <UploadSolarDiagramModal
+                  itemId={item.id}
+                  itemTitle={item.title}
+                  onClose={() => onUploadModalChange(null)}
+                  onUpload={onUploadSolarDiagram}
+                />
+              )}
+            </>
           )}
         </div>
       </div>
@@ -827,5 +965,87 @@ function ListRowItem(props: {
         )}
       </div>
     </li>
+  );
+}
+
+function UploadSolarDiagramModal(props: {
+  itemId: string;
+  itemTitle: string;
+  onClose: () => void;
+  onUpload: (itemId: string, file: File) => void;
+}) {
+  const { itemId, itemTitle, onClose, onUpload } = props;
+  const [dragOver, setDragOver] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setDragOver(false);
+    const file = e.dataTransfer.files[0];
+    if (file) {
+      onUpload(itemId, file);
+    }
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      onUpload(itemId, file);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
+      <div className="rounded-xl bg-white shadow-lg max-w-md w-full p-6">
+        <div className="flex items-start justify-between gap-2 mb-4">
+          <div className="min-w-0">
+            <h3 className="font-semibold text-slate-900">Upload Solar Diagram</h3>
+            <p className="text-xs text-slate-500 mt-1 line-clamp-1">{itemTitle}</p>
+          </div>
+          <button
+            onClick={onClose}
+            className="shrink-0 text-slate-400 hover:text-slate-600 cursor-pointer"
+            aria-label="Close"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div
+          onDrop={handleDrop}
+          onDragOver={(e) => {
+            e.preventDefault();
+            setDragOver(true);
+          }}
+          onDragLeave={() => setDragOver(false)}
+          className={`rounded-lg border-2 border-dashed p-8 text-center transition-colors ${
+            dragOver
+              ? "border-brand bg-brand-50"
+              : "border-slate-200 bg-slate-50 hover:border-brand-200"
+          }`}
+        >
+          <Upload className={`h-8 w-8 mx-auto mb-3 ${dragOver ? "text-brand" : "text-slate-300"}`} />
+          <p className="text-sm font-medium text-slate-900 mb-1">Drag and drop your diagram here</p>
+          <p className="text-xs text-slate-500 mb-4">or</p>
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className="inline-block px-4 py-2 rounded-lg bg-brand text-white text-xs font-semibold hover:bg-brand-dark cursor-pointer"
+          >
+            Select File
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*,.pdf"
+            onChange={handleFileSelect}
+            className="hidden"
+            aria-label="Upload solar diagram"
+          />
+          <p className="text-[11px] text-slate-500 mt-4">
+            Supported: PDF, JPEG, PNG, WebP (Max 20MB for PDF, 15MB for images)
+          </p>
+        </div>
+      </div>
+    </div>
   );
 }

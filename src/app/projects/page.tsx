@@ -333,86 +333,88 @@ export default function ProjectsPage() {
       ) : (
         /* List View */
         <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-slate-100 bg-slate-50/50">
-                <th className="px-5 py-3 text-left text-xs font-medium text-slate-500">
-                  Project
-                </th>
-                <th className="px-5 py-3 text-left text-xs font-medium text-slate-500 hidden md:table-cell">
-                  Client
-                </th>
-                <th className="px-5 py-3 text-left text-xs font-medium text-slate-500 hidden lg:table-cell">
-                  Budget
-                </th>
-                <th className="px-5 py-3 text-left text-xs font-medium text-slate-500">
-                  Progress
-                </th>
-                <th className="px-5 py-3 text-left text-xs font-medium text-slate-500">
-                  Status
-                </th>
-                <th className="px-5 py-3 text-left text-xs font-medium text-slate-500 hidden lg:table-cell">
-                  Deadline
-                </th>
-                <th className="px-5 py-3 text-right text-xs font-medium text-slate-500">
-                  Actions
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {filteredProjects.map((project: Project) => (
-                <tr
-                  key={project.id}
-                  className="hover:bg-slate-50 transition-colors"
-                >
-                  <td className="px-5 py-3.5">
-                    <div className="flex items-center gap-2">
-                      {project.warrantyEndDate && (
-                        <span
-                          title={`Warranty until ${formatDate(project.warrantyEndDate)}`}
-                          className="flex text-green-600"
-                        >
-                          <ShieldCheck className="h-4 w-4" />
-                        </span>
-                      )}
-                      <Link
-                        href={`/projects/${project.id}`}
-                        className="text-sm font-medium text-slate-900 hover:text-brand"
-                      >
-                        {project.name}
-                      </Link>
-                    </div>
-                  </td>
-                  <td className="px-5 py-3.5 text-sm text-slate-600 hidden md:table-cell">
-                    {project.client}
-                  </td>
-                  <td className="px-5 py-3.5 text-sm font-medium text-slate-700 hidden lg:table-cell">
-                    {formatCurrencyDecimal(project.budget)}
-                  </td>
-                  <td className="px-5 py-3.5 w-40">
-                    <ProgressBar value={project.progress} />
-                  </td>
-                  <td className="px-5 py-3.5">
-                    <StatusBadge status={project.status} />
-                  </td>
-                  <td className="px-5 py-3.5 text-sm text-slate-500 hidden lg:table-cell">
-                    {formatDate(project.endDate)}
-                  </td>
-                  <td className="px-5 py-3.5">
-                    <div className="flex justify-end">
-                      <button
-                        onClick={() => setProjectToDelete(project)}
-                        title="Delete project"
-                        className="flex h-7 w-7 items-center justify-center rounded text-slate-400 hover:bg-red-50 hover:text-red-500 transition-colors"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-                  </td>
+          <div className="overflow-x-auto">
+            <table className="min-w-[900px] w-full">
+              <thead>
+                <tr className="border-b border-slate-100 bg-slate-50/50">
+                  <th className="px-5 py-3 text-left text-xs font-medium text-slate-500">
+                    Project
+                  </th>
+                  <th className="px-5 py-3 text-left text-xs font-medium text-slate-500 hidden md:table-cell">
+                    Client
+                  </th>
+                  <th className="px-5 py-3 text-left text-xs font-medium text-slate-500 hidden lg:table-cell">
+                    Budget
+                  </th>
+                  <th className="px-5 py-3 text-left text-xs font-medium text-slate-500">
+                    Progress
+                  </th>
+                  <th className="px-5 py-3 text-left text-xs font-medium text-slate-500">
+                    Status
+                  </th>
+                  <th className="px-5 py-3 text-left text-xs font-medium text-slate-500 hidden lg:table-cell">
+                    Deadline
+                  </th>
+                  <th className="px-5 py-3 text-right text-xs font-medium text-slate-500">
+                    Actions
+                  </th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {filteredProjects.map((project: Project) => (
+                  <tr
+                    key={project.id}
+                    className="hover:bg-slate-50 transition-colors"
+                  >
+                    <td className="px-5 py-3.5">
+                      <div className="flex items-center gap-2">
+                        {project.warrantyEndDate && (
+                          <span
+                            title={`Warranty until ${formatDate(project.warrantyEndDate)}`}
+                            className="flex text-green-600"
+                          >
+                            <ShieldCheck className="h-4 w-4" />
+                          </span>
+                        )}
+                        <Link
+                          href={`/projects/${project.id}`}
+                          className="text-sm font-medium text-slate-900 hover:text-brand"
+                        >
+                          {project.name}
+                        </Link>
+                      </div>
+                    </td>
+                    <td className="px-5 py-3.5 text-sm text-slate-600 hidden md:table-cell">
+                      {project.client}
+                    </td>
+                    <td className="px-5 py-3.5 text-sm font-medium text-slate-700 hidden lg:table-cell">
+                      {formatCurrencyDecimal(project.budget)}
+                    </td>
+                    <td className="px-5 py-3.5 w-40">
+                      <ProgressBar value={project.progress} />
+                    </td>
+                    <td className="px-5 py-3.5">
+                      <StatusBadge status={project.status} />
+                    </td>
+                    <td className="px-5 py-3.5 text-sm text-slate-500 hidden lg:table-cell">
+                      {formatDate(project.endDate)}
+                    </td>
+                    <td className="px-5 py-3.5">
+                      <div className="flex justify-end">
+                        <button
+                          onClick={() => setProjectToDelete(project)}
+                          title="Delete project"
+                          className="flex h-7 w-7 items-center justify-center rounded text-slate-400 hover:bg-red-50 hover:text-red-500 transition-colors"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 

@@ -272,7 +272,7 @@ export default function InvoicePage() {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full">
+            <table className="w-full min-w-[900px]">
               <thead>
                 <tr className="border-b border-slate-100 bg-slate-50/60">
                   <th className="px-5 py-3.5 text-left text-xs font-medium text-slate-500">Invoice #</th>

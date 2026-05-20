@@ -19,6 +19,10 @@ import type {
   UserCompliancePreferences,
 } from "@/types/client";
 import { toast } from "@/lib/toast";
+import {
+  COMPLIANCE_ATTACHMENT_ALLOWED_TYPES,
+  validateUploadFileSize,
+} from "@/lib/upload-constraints";
 
 type ProjectSummary = {
   id: string;
@@ -185,6 +189,16 @@ export default function ClientCompliancePage() {
   };
 
   const uploadFile = async (itemId: string, file: File) => {
+    const uploadError = validateUploadFileSize(
+      file,
+      COMPLIANCE_ATTACHMENT_ALLOWED_TYPES,
+      "Invalid file type. Use PDF, JPEG, PNG, or WebP."
+    );
+    if (uploadError) {
+      toast.error(uploadError);
+      return;
+    }
+
     setUploadingId(itemId);
     try {
       const fd = new FormData();

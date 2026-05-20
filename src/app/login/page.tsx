@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import Image from "next/image";
-import { Eye, EyeOff } from "lucide-react";
+import { Eye, EyeOff, Mail, Lock } from "lucide-react";
 import LandingHeader from "@/components/layout/LandingHeader";
 import { APP_ICON } from "@/lib/app-icon";
 
@@ -124,14 +124,17 @@ export default function LoginPage() {
               <label htmlFor="email" className="block text-base font-medium text-slate-700 mb-1.5">
                 Email Address
               </label>
-              <input
-                id="email"
-                type="email"
-                placeholder="you@example.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="w-full rounded-lg border border-slate-300 px-4 py-3 text-base outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
-              />
+              <div className="relative">
+                <Mail className="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
+                <input
+                  id="email"
+                  type="email"
+                  placeholder="you@example.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="w-full rounded-lg border border-slate-300 px-4 py-3 pl-11 text-base outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
+                />
+              </div>
             </div>
 
             <div>
@@ -144,13 +147,14 @@ export default function LoginPage() {
                 </Link>
               </div>
               <div className="relative">
+                <Lock className="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
                 <input
                   id="password"
                   type={showPassword ? "text" : "password"}
                   placeholder="Enter your password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full rounded-lg border border-slate-300 px-4 py-3 pr-12 text-base outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
+                  className="w-full rounded-lg border border-slate-300 px-4 py-3 pl-11 pr-12 text-base outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
                 />
                 <button
                   type="button"

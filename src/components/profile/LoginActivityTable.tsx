@@ -44,7 +44,7 @@ export default function LoginActivityTable() {
 
   return (
     <div className="overflow-x-auto">
-      <table className="w-full text-sm">
+      <table className="w-full min-w-[600px] text-sm">
         <thead>
           <tr className="border-b border-slate-200">
             <th className="pb-2 text-left font-medium text-slate-600">Date</th>

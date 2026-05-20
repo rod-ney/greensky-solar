@@ -138,104 +138,106 @@ export default function UsersPage() {
 
       {/* Users Table */}
       <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
-        <table className="w-full">
-          <thead>
-            <tr className="border-b border-slate-100 bg-slate-50/50">
-              <th className="px-5 py-3 text-left text-xs font-medium text-slate-500">
-                User
-              </th>
-              <th className="px-5 py-3 text-left text-xs font-medium text-slate-500 hidden md:table-cell">
-                Email
-              </th>
-              <th className="px-5 py-3 text-left text-xs font-medium text-slate-500 hidden sm:table-cell">
-                Contact
-              </th>
-              <th className="px-5 py-3 text-left text-xs font-medium text-slate-500">
-                Role
-              </th>
-              <th className="px-5 py-3 text-left text-xs font-medium text-slate-500">
-                Status
-              </th>
-              <th className="px-5 py-3 text-left text-xs font-medium text-slate-500 hidden lg:table-cell">
-                Last Login
-              </th>
-              <th className="px-5 py-3 text-right text-xs font-medium text-slate-500">
-                Actions
-              </th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {filteredUsers.map((user) => (
-              <tr key={user.id} className="hover:bg-slate-50 transition-colors">
-                <td className="px-5 py-3.5">
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-brand/10 text-xs font-bold text-brand">
-                      {user.avatar}
-                    </div>
-                    <span className="text-sm font-medium text-slate-900">
-                      {user.name}
-                    </span>
-                  </div>
-                </td>
-                <td className="px-5 py-3.5 text-sm text-slate-600 hidden md:table-cell">
-                  {user.email}
-                </td>
-                <td className="px-5 py-3.5 text-sm text-slate-600 hidden sm:table-cell">
-                  {user.contactNumber ? `+63 ${user.contactNumber}` : "—"}
-                </td>
-                <td className="px-5 py-3.5">
-                  <span
-                    className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium ${roleBgColors[user.role]}`}
-                  >
-                    {roleIcons[user.role]}
-                    {roleLabels[user.role]}
-                  </span>
-                </td>
-                <td className="px-5 py-3.5">
-                  <StatusBadge status={user.status} />
-                </td>
-                <td className="px-5 py-3.5 text-sm text-slate-500 hidden lg:table-cell">
-                  {new Date(user.lastLogin).toLocaleDateString("en-US", {
-                    month: "short",
-                    day: "numeric",
-                    year: "numeric",
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  })}
-                </td>
-                <td className="px-5 py-3.5">
-                  <div className="flex justify-end gap-1">
-                    <button
-                      onClick={() => {
-                        setSelectedUser(user.id);
-                        setEditedRole(user.role);
-                        setEditedContactNumber(user.contactNumber ?? "");
-                        setRoleSaveError("");
-                        setShowEditModal(true);
-                      }}
-                      className="flex h-7 w-7 items-center justify-center rounded text-slate-400 hover:bg-slate-100 hover:text-slate-600"
-                      title="Edit"
-                    >
-                      <Edit2 className="h-3.5 w-3.5" />
-                    </button>
-                    <button
-                      onClick={() => setUserToDelete(user)}
-                      disabled={user.email.toLowerCase() === sessionUser.email?.toLowerCase()}
-                      className="flex h-7 w-7 items-center justify-center rounded text-slate-400 hover:bg-red-50 hover:text-red-500 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent disabled:hover:text-slate-400"
-                      title={
-                        user.email.toLowerCase() === sessionUser.email?.toLowerCase()
-                          ? "Cannot delete your own account"
-                          : "Delete user"
-                      }
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
-                </td>
+        <div className="overflow-x-auto">
+          <table className="min-w-[860px] w-full">
+            <thead>
+              <tr className="border-b border-slate-100 bg-slate-50/50">
+                <th className="px-5 py-3 text-left text-xs font-medium text-slate-500">
+                  User
+                </th>
+                <th className="px-5 py-3 text-left text-xs font-medium text-slate-500 hidden md:table-cell">
+                  Email
+                </th>
+                <th className="px-5 py-3 text-left text-xs font-medium text-slate-500 hidden sm:table-cell">
+                  Contact
+                </th>
+                <th className="px-5 py-3 text-left text-xs font-medium text-slate-500">
+                  Role
+                </th>
+                <th className="px-5 py-3 text-left text-xs font-medium text-slate-500">
+                  Status
+                </th>
+                <th className="px-5 py-3 text-left text-xs font-medium text-slate-500 hidden lg:table-cell">
+                  Last Login
+                </th>
+                <th className="px-5 py-3 text-right text-xs font-medium text-slate-500">
+                  Actions
+                </th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {filteredUsers.map((user) => (
+                <tr key={user.id} className="hover:bg-slate-50 transition-colors">
+                  <td className="px-5 py-3.5">
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-8 w-8 items-center justify-center rounded-full bg-brand/10 text-xs font-bold text-brand">
+                        {user.avatar}
+                      </div>
+                      <span className="text-sm font-medium text-slate-900">
+                        {user.name}
+                      </span>
+                    </div>
+                  </td>
+                  <td className="px-5 py-3.5 text-sm text-slate-600 hidden md:table-cell">
+                    {user.email}
+                  </td>
+                  <td className="px-5 py-3.5 text-sm text-slate-600 hidden sm:table-cell">
+                    {user.contactNumber ? `+63 ${user.contactNumber}` : "—"}
+                  </td>
+                  <td className="px-5 py-3.5">
+                    <span
+                      className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium ${roleBgColors[user.role]}`}
+                    >
+                      {roleIcons[user.role]}
+                      {roleLabels[user.role]}
+                    </span>
+                  </td>
+                  <td className="px-5 py-3.5">
+                    <StatusBadge status={user.status} />
+                  </td>
+                  <td className="px-5 py-3.5 text-sm text-slate-500 hidden lg:table-cell">
+                    {new Date(user.lastLogin).toLocaleDateString("en-US", {
+                      month: "short",
+                      day: "numeric",
+                      year: "numeric",
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
+                  </td>
+                  <td className="px-5 py-3.5">
+                    <div className="flex justify-end gap-1">
+                      <button
+                        onClick={() => {
+                          setSelectedUser(user.id);
+                          setEditedRole(user.role);
+                          setEditedContactNumber(user.contactNumber ?? "");
+                          setRoleSaveError("");
+                          setShowEditModal(true);
+                        }}
+                        className="flex h-7 w-7 items-center justify-center rounded text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                        title="Edit"
+                      >
+                        <Edit2 className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        onClick={() => setUserToDelete(user)}
+                        disabled={user.email.toLowerCase() === sessionUser.email?.toLowerCase()}
+                        className="flex h-7 w-7 items-center justify-center rounded text-slate-400 hover:bg-red-50 hover:text-red-500 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent disabled:hover:text-slate-400"
+                        title={
+                          user.email.toLowerCase() === sessionUser.email?.toLowerCase()
+                            ? "Cannot delete your own account"
+                            : "Delete user"
+                        }
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {/* Add User Modal */}

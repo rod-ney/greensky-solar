@@ -224,7 +224,7 @@ export default function BookingsPage() {
       {/* Bookings Table */}
       <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full">
+          <table className="w-full min-w-[850px]">
             <thead>
               <tr className="border-b border-slate-100 bg-slate-50/50">
                 <th className="px-5 py-3 text-left text-xs font-medium text-slate-500">

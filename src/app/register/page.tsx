@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import Image from "next/image";
-import { Eye, EyeOff } from "lucide-react";
+import { Eye, EyeOff, Mail, Lock } from "lucide-react";
 import LandingHeader from "@/components/layout/LandingHeader";
 import { APP_ICON } from "@/lib/app-icon";
 
@@ -54,7 +54,9 @@ export default function RegisterPage() {
     if (!digitsOnly) {
       errors.contactNumber = "Contact number is required.";
     } else if (digitsOnly.length !== 10) {
-      errors.contactNumber = "Contact number must be exactly 10 digits.";
+      errors.contactNumber = "Contact number must be exactly 10 digits and start with 9.";
+    } else if (!digitsOnly.startsWith("9")) {
+      errors.contactNumber = "Contact number must start with 9.";
     }
 
     if (!password) {
@@ -222,17 +224,20 @@ export default function RegisterPage() {
               >
                 Email Address
               </label>
-              <input
-                id="email"
-                type="email"
-                placeholder="you@example.com"
-                value={email}
-                onChange={(event) => {
-                  setEmail(event.target.value);
-                  clearFieldError("email");
-                }}
-                className={`w-full rounded-lg border px-4 py-3 text-base outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20 ${fieldErrors.email ? "border-red-500" : "border-slate-300"}`}
-              />
+              <div className="relative">
+                <Mail className="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
+                <input
+                  id="email"
+                  type="email"
+                  placeholder="you@example.com"
+                  value={email}
+                  onChange={(event) => {
+                    setEmail(event.target.value);
+                    clearFieldError("email");
+                  }}
+                  className={`w-full rounded-lg border px-4 py-3 pl-11 text-base outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20 ${fieldErrors.email ? "border-red-500" : "border-slate-300"}`}
+                />
+              </div>
               {fieldErrors.email && (
                 <p className="mt-1 text-sm text-red-600">{fieldErrors.email}</p>
               )}
@@ -258,7 +263,12 @@ export default function RegisterPage() {
                   value={contactNumber}
                   onChange={(event) => {
                     const digitsOnly = event.target.value.replace(/\D/g, "").slice(0, 10);
-                    setContactNumber(digitsOnly);
+                    const normalized = digitsOnly.length === 0
+                      ? ""
+                      : digitsOnly.startsWith("9")
+                        ? digitsOnly
+                        : `9${digitsOnly.slice(0, 9)}`;
+                    setContactNumber(normalized);
                     clearFieldError("contactNumber");
                   }}
                   className="w-full px-4 py-3 text-base outline-none"
@@ -279,6 +289,7 @@ export default function RegisterPage() {
                 Password
               </label>
               <div className="relative">
+                <Lock className="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
                 <input
                   id="password"
                   type={showPassword ? "text" : "password"}
@@ -288,7 +299,7 @@ export default function RegisterPage() {
                     setPassword(event.target.value);
                     clearFieldError("password");
                   }}
-                  className={`w-full rounded-lg border px-4 py-3 pr-12 text-base outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20 ${fieldErrors.password ? "border-red-500" : "border-slate-300"}`}
+                  className={`w-full rounded-lg border px-4 py-3 pl-11 pr-12 text-base outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20 ${fieldErrors.password ? "border-red-500" : "border-slate-300"}`}
                 />
                 <button
                   type="button"
@@ -348,6 +359,7 @@ export default function RegisterPage() {
                 Confirm Password
               </label>
               <div className="relative">
+                <Lock className="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
                 <input
                   id="confirmPassword"
                   type={showConfirmPassword ? "text" : "password"}
@@ -357,7 +369,7 @@ export default function RegisterPage() {
                     setConfirmPassword(event.target.value);
                     clearFieldError("confirmPassword");
                   }}
-                  className={`w-full rounded-lg border px-4 py-3 pr-12 text-base outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20 ${fieldErrors.confirmPassword ? "border-red-500" : "border-slate-300"}`}
+                  className={`w-full rounded-lg border px-4 py-3 pl-11 pr-12 text-base outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20 ${fieldErrors.confirmPassword ? "border-red-500" : "border-slate-300"}`}
                 />
                 <button
                   type="button"

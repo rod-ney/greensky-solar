@@ -402,7 +402,7 @@ export default function BookingPage() {
       {/* Table */}
       <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full">
+          <table className="w-full min-w-[900px]">
             <thead>
               <tr className="border-b border-slate-100 bg-slate-50/60">
                 <th className="px-5 py-3.5 text-left">

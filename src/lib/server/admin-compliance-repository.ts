@@ -1,8 +1,9 @@
 import { dbQuery } from "@/lib/server/db";
 import { toIsoDateManila } from "@/lib/date-utils";
 import { updateDocumentApprovalStatusInDb } from "@/lib/server/client-documents-repository";
-import type { ComplianceItemStatus } from "@/types/client";
+import type { ComplianceItemStatus, Document } from "@/types/client";
 import type { AdminComplianceTrackerItem } from "@/types/compliance-admin";
+import { randomUUID } from "crypto";
 
 type ComplianceRow = {
   item_id: string;
@@ -170,3 +171,122 @@ export async function adminReviewComplianceItemInDb(
     itemTitle: row.title,
   };
 }
+
+/**
+ * Get a single compliance item by ID (admin view).
+ */
+export async function getComplianceItemById(
+  itemId: string
+): Promise<AdminComplianceTrackerItem | null> {
+  const result = await dbQuery<ComplianceRow>(
+    `
+      SELECT
+        c.id AS item_id,
+        c.project_id,
+        p.name AS project_name,
+        p.user_id,
+        u.name AS client_name,
+        u.email AS client_email,
+        c.requirement_key,
+        c.title,
+        c.description,
+        c.due_date,
+        c.supplied_by,
+        c.status,
+        c.document_id,
+        d.file_url,
+        d.approval_status::text AS doc_approval_status
+      FROM compliance_timeline_items c
+      INNER JOIN projects p ON p.id = c.project_id
+      INNER JOIN users u ON u.id = p.user_id
+      LEFT JOIN documents d ON d.id = c.document_id
+      WHERE c.id = $1
+        AND p.user_id IS NOT NULL
+        AND EXISTS (
+          SELECT 1
+          FROM bookings b
+          WHERE b.user_id = p.user_id
+            AND b.service_type = 'site_inspection'
+            AND b.status = 'completed'
+        )
+      LIMIT 1
+    `,
+    [itemId]
+  );
+  return result.rows[0] ? mapRow(result.rows[0]) : null;
+}
+
+/**
+ * Add a document for admin uploads (solar diagrams, etc.)
+ */
+export async function addAdminDocumentToDb(
+  doc: Omit<Document, "id">,
+  adminUserId: string
+): Promise<Document> {
+  const nextId = `doc-${randomUUID()}`;
+
+  type DocumentRow = {
+    id: string;
+    title: string;
+    type: Document["type"];
+    file_size: string;
+    uploaded_at: string | Date;
+    project_name: string | null;
+    status: Document["status"];
+    approval_status: Document["approvalStatus"] | null;
+    report_id: string | null;
+    file_url: string | null;
+  };
+
+  await dbQuery(
+    `
+      INSERT INTO documents (id, title, type, file_size, uploaded_at, project_name, status, approval_status, user_id, file_url)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+    `,
+    [
+      nextId,
+      doc.title,
+      doc.type,
+      doc.fileSize,
+      doc.uploadedAt,
+      doc.projectName ?? null,
+      doc.status,
+      doc.approvalStatus ?? null,
+      adminUserId,
+      doc.fileUrl ?? null,
+    ]
+  );
+
+  return {
+    id: nextId,
+    title: doc.title,
+    type: doc.type,
+    fileSize: doc.fileSize,
+    uploadedAt: doc.uploadedAt,
+    projectName: doc.projectName,
+    status: doc.status,
+    approvalStatus: doc.approvalStatus,
+    fileUrl: doc.fileUrl,
+  };
+}
+
+/**
+ * Update a compliance item document (for admin uploads to admin-queue items).
+ * No user_id check since these are admin-supplied items.
+ */
+export async function updateAdminComplianceItemDocument(
+  itemId: string,
+  documentId: string | null
+): Promise<boolean> {
+  const result = await dbQuery(
+    `
+      UPDATE compliance_timeline_items
+      SET document_id = $2, status = $3, updated_at = NOW()
+      WHERE id = $1 AND supplied_by = 'admin'
+      RETURNING id
+    `,
+    [itemId, documentId, documentId ? "pending" : "pending"]
+  );
+  return (result.rowCount ?? 0) > 0;
+}
+

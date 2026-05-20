@@ -1,7 +1,7 @@
 "use client";
 
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Sidebar from "@/components/layout/Sidebar";
 import Navbar from "@/components/layout/Navbar";
 import QuickAccessMenu from "@/components/ui/QuickAccessMenu";
@@ -26,6 +26,17 @@ export default function AppShell({
     pathname === "/prices" ||
     pathname.startsWith("/preview");
 
+  useEffect(() => {
+    const media = window.matchMedia("(max-width: 768px)");
+    const syncSidebarMode = () => {
+      setSidebarCollapsed((prev) => (media.matches ? true : prev));
+    };
+
+    syncSidebarMode();
+    media.addEventListener("change", syncSidebarMode);
+    return () => media.removeEventListener("change", syncSidebarMode);
+  }, []);
+
   if (isClientRoute || isTechnicianRoute || isPublicAuthRoute) {
     return <>{children}</>;
   }
@@ -38,7 +49,7 @@ export default function AppShell({
       />
       <div
         className={`relative z-10 flex flex-1 flex-col transition-[padding] duration-200 ${
-          sidebarCollapsed ? "pl-0" : "pl-64"
+          sidebarCollapsed ? "pl-20" : "pl-64"
         }`}
       >
         <Navbar

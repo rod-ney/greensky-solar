@@ -2,16 +2,12 @@ import { mkdir, unlink, writeFile } from "fs/promises";
 import path from "path";
 import { NextResponse } from "next/server";
 import { getTodayInManila } from "@/lib/date-utils";
-import { requireClient } from "@/lib/server/auth-guard";
+import { requireAdmin } from "@/lib/server/auth-guard";
 import {
-  addClientDocumentToDb,
-  deleteClientDocumentFromDb,
-} from "@/lib/server/client-documents-repository";
-import {
-  clearUploadedComplianceDocumentInDb,
-  getComplianceItemForUser,
-  updateComplianceItemDocumentInDb,
-} from "@/lib/server/compliance-repository";
+  addAdminDocumentToDb,
+  getComplianceItemById,
+  updateAdminComplianceItemDocument,
+} from "@/lib/server/admin-compliance-repository";
 import {
   COMPLIANCE_ATTACHMENT_ALLOWED_TYPES,
   validateUploadFileSize,
@@ -58,29 +54,21 @@ export async function POST(
   request: Request,
   context: { params: Promise<{ itemId: string }> }
 ) {
-  const auth = await requireClient();
+  const auth = await requireAdmin();
   if (auth instanceof NextResponse) return auth;
   const { itemId } = await context.params;
 
   try {
-    const item = await getComplianceItemForUser(itemId, auth.userId);
+    const item = await getComplianceItemById(itemId);
     if (!item) {
-      return NextResponse.json({ error: "Not found" }, { status: 404 });
+      return NextResponse.json({ error: "Compliance item not found" }, { status: 404 });
     }
-    if (item.suppliedBy !== "client") {
+
+    if (item.suppliedBy !== "admin") {
       return NextResponse.json(
-        { error: "This document is provided by GreenSky Solar." },
+        { error: "Only admin-queue items can have solar diagrams uploaded." },
         { status: 400 }
       );
-    }
-    if (item.status === "approved") {
-      return NextResponse.json(
-        { error: "This requirement is already approved." },
-        { status: 400 }
-      );
-    }
-    if (item.status === "waived") {
-      return NextResponse.json({ error: "This requirement was waived." }, { status: 400 });
     }
 
     const contentType = request.headers.get("content-type") ?? "";
@@ -96,6 +84,7 @@ export async function POST(
     if (!file || !(file instanceof File)) {
       return NextResponse.json({ error: "No file provided." }, { status: 400 });
     }
+
     const uploadError = validateUploadFileSize(
       file,
       COMPLIANCE_ATTACHMENT_ALLOWED_TYPES,
@@ -107,44 +96,41 @@ export async function POST(
 
     const buffer = Buffer.from(await file.arrayBuffer());
     const ext = extForMime(file.type);
-    const safeUser = auth.userId.replace(/[^a-zA-Z0-9_-]/g, "");
     const safeItem = itemId.replace(/[^a-zA-Z0-9-]/g, "");
-    const filename = `${safeItem}-${Date.now()}.${ext}`;
-    const relativeDir = path.join("public", "uploads", "compliance", safeUser);
+    const filename = `solar-diagram-${safeItem}-${Date.now()}.${ext}`;
+    const relativeDir = path.join("public", "uploads", "compliance", "admin");
     const absoluteDir = path.join(process.cwd(), relativeDir);
     await mkdir(absoluteDir, { recursive: true });
     const absolutePath = path.join(absoluteDir, filename);
     await writeFile(absolutePath, buffer);
 
-    const publicUrl = `/uploads/compliance/${safeUser}/${filename}`;
+    const publicUrl = `/uploads/compliance/admin/${filename}`;
     const today = getTodayInManila();
 
-    const doc = await addClientDocumentToDb(
+    const doc = await addAdminDocumentToDb(
       {
         title: sanitizeClientFilename(file.name),
-        type: "permit",
+        type: "report",
         fileSize: formatFileSize(file.size),
         uploadedAt: today,
         projectName: item.projectName,
         status: "active",
-        approvalStatus: "pending",
+        approvalStatus: "approved",
         fileUrl: publicUrl,
       },
       auth.userId
     );
 
-    const updated = await updateComplianceItemDocumentInDb(
-      itemId,
-      auth.userId,
-      doc.id,
-      "submitted"
-    );
+    const updated = await updateAdminComplianceItemDocument(itemId, doc.id);
     if (!updated) {
+      await unlinkComplianceDiskFile(publicUrl);
       return NextResponse.json({ error: "Failed to link document." }, { status: 500 });
     }
 
-    const nextItem = await getComplianceItemForUser(itemId, auth.userId);
-    return NextResponse.json({ item: nextItem, document: doc });
+    return NextResponse.json({
+      ok: true,
+      message: "Solar diagram uploaded successfully.",
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
     return NextResponse.json({ error: message }, { status: 500 });
@@ -152,46 +138,31 @@ export async function POST(
 }
 
 export async function DELETE(
-  _: Request,
+  request: Request,
   context: { params: Promise<{ itemId: string }> }
 ) {
-  const auth = await requireClient();
+  const auth = await requireAdmin();
   if (auth instanceof NextResponse) return auth;
   const { itemId } = await context.params;
 
   try {
-    const item = await getComplianceItemForUser(itemId, auth.userId);
+    const item = await getComplianceItemById(itemId);
     if (!item) {
-      return NextResponse.json({ error: "Not found." }, { status: 404 });
+      return NextResponse.json({ error: "Compliance item not found" }, { status: 404 });
     }
-    if (item.suppliedBy !== "client") {
-      return NextResponse.json({ error: "This document is provided by GreenSky Solar." }, { status: 400 });
-    }
-    if (item.status === "approved") {
-      return NextResponse.json(
-        { error: "Approved submissions cannot be removed here." },
-        { status: 400 }
-      );
-    }
-    if (item.status === "waived" || !item.documentId || !item.fileUrl) {
-      return NextResponse.json({ error: "Nothing to remove." }, { status: 400 });
+
+    if (!item.fileUrl) {
+      return NextResponse.json({ error: "No diagram to remove." }, { status: 400 });
     }
 
     await unlinkComplianceDiskFile(item.fileUrl);
 
-    const cleared = await clearUploadedComplianceDocumentInDb(
-      itemId,
-      auth.userId,
-      item.documentId
-    );
+    const cleared = await updateAdminComplianceItemDocument(itemId, null);
     if (!cleared) {
-      return NextResponse.json({ error: "Could not clear upload." }, { status: 500 });
+      return NextResponse.json({ error: "Failed to remove diagram." }, { status: 500 });
     }
 
-    await deleteClientDocumentFromDb(item.documentId, auth.userId);
-
-    const nextItem = await getComplianceItemForUser(itemId, auth.userId);
-    return NextResponse.json({ item: nextItem });
+    return NextResponse.json({ ok: true, message: "Solar diagram removed." });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
     return NextResponse.json({ error: message }, { status: 500 });
