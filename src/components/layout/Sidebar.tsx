@@ -89,8 +89,8 @@ export default function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
                       key={item.href}
                       href={item.href}
                       className={`sidebar-link flex items-center rounded-lg px-3 py-2.5 text-sm font-medium ${collapsed ? "justify-center" : "gap-3"} ${isActive
-                          ? "bg-white/15 text-white shadow-sm backdrop-blur-sm ring-1 ring-white/20"
-                          : "text-white/90 hover:bg-white/10 hover:text-white"
+                        ? "bg-white/15 text-white shadow-sm backdrop-blur-sm ring-1 ring-white/20"
+                        : "text-white/90 hover:bg-white/10 hover:text-white"
                         }`}
                       title={collapsed ? item.label : undefined}
                     >

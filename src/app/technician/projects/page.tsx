@@ -88,9 +88,12 @@ export default function TechnicianProjectsPage() {
               >
                 <div className="flex items-start justify-between">
                   <div className="flex-1 min-w-0">
-                    <h3 className="text-sm font-semibold text-slate-900 truncate">
-                      {project.name}
-                    </h3>
+                    <div className="flex items-center gap-2 flex-wrap mb-0.5">
+                      <h3 className="text-sm font-semibold text-slate-900 truncate">
+                        <span className="text-slate-400 font-mono mr-2">{project.id.slice(0, 8).toUpperCase()}</span>
+                        {project.name}
+                      </h3>
+                    </div>
                     <p className="text-xs text-slate-500 mt-0.5">
                       {project.client}
                     </p>

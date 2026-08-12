@@ -1,90 +1,25 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  ArrowRight,
-  Calendar,
-  Check,
-  ExternalLink,
+  Building2,
+  ChevronRight,
   FolderKanban,
-  LayoutGrid,
-  List,
   ListChecks,
   Loader2,
-  Mail,
-  Plus,
-  Upload,
+  MapPin,
+  Search,
   User,
-  X,
 } from "lucide-react";
-import { formatDate } from "@/lib/format";
 import { toast } from "@/lib/toast";
 import type { AdminComplianceTrackerItem } from "@/types/compliance-admin";
-import StatusBadge from "@/components/ui/StatusBadge";
-import Button from "@/components/ui/Button";
-import { COMPLIANCE_ATTACHMENT_ALLOWED_TYPES, validateUploadFileSize } from "@/lib/upload-constraints";
-
-type CategoryKey =
-  | "pending_review"
-  | "awaiting_client"
-  | "approved"
-  | "rejected"
-  | "waived"
-  | "admin_queue";
-
-const CATEGORY_META: Record<
-  CategoryKey,
-  { title: string; hint: string; borderClass: string }
-> = {
-  pending_review: {
-    title: "Pending review",
-    hint: "Client uploaded a file — review in Documents or update approval on the linked permit.",
-    borderClass: "border-amber-200 bg-amber-50/40",
-  },
-  awaiting_client: {
-    title: "Awaiting client",
-    hint: "Waiting for the client to upload this requirement.",
-    borderClass: "border-slate-200 bg-slate-50/60",
-  },
-  approved: {
-    title: "Approved",
-    hint: "Completed and approved.",
-    borderClass: "border-brand-200 bg-brand-50/50",
-  },
-  rejected: {
-    title: "Rejected",
-    hint: "Client should re-upload after corrections.",
-    borderClass: "border-red-200 bg-red-50/40",
-  },
-  waived: {
-    title: "Waived / N/A",
-    hint: "Marked not applicable by the client.",
-    borderClass: "border-orange-200 bg-orange-50/40",
-  },
-  admin_queue: {
-    title: "GreenSky to provide",
-    hint: "Internal or admin-uploaded document (e.g. diagram).",
-    borderClass: "border-slate-200 bg-slate-100/80",
-  },
-};
-
-const CATEGORY_ORDER: CategoryKey[] = [
-  "pending_review",
-  "awaiting_client",
-  "admin_queue",
-  "approved",
-  "rejected",
-  "waived",
-];
-
-const OPTIONAL_KEYS = new Set(["homeowners_cert", "net_metering"]);
-
-type ViewMode = "kanban" | "list" | "timeline";
+import ProgressBar from "@/components/ui/ProgressBar";
 
 type ProjectGroup = {
   projectId: string;
   projectName: string;
+  location?: string;
   clientName: string;
   clientEmail: string;
   items: AdminComplianceTrackerItem[];
@@ -94,70 +29,16 @@ function manilaToday(): string {
   return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Manila" }).slice(0, 10);
 }
 
-function bucketItem(item: AdminComplianceTrackerItem): CategoryKey {
-  if (item.status === "waived") return "waived";
-  if (item.status === "approved") return "approved";
-  if (item.status === "rejected") return "rejected";
-  if (item.status === "submitted") return "pending_review";
-  if (item.suppliedBy === "admin") return "admin_queue";
-  return "awaiting_client";
-}
-
 function isResolvedItem(item: AdminComplianceTrackerItem): boolean {
   if (item.status === "approved" || item.status === "waived") return true;
   if (item.suppliedBy === "admin" && item.status === "pending") return true;
   return false;
 }
 
-function initials(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return "?";
-  if (parts.length === 1) return (parts[0][0] ?? "?").toUpperCase();
-  return `${parts[0][0] ?? ""}${parts[parts.length - 1][0] ?? ""}`.toUpperCase();
-}
-
-function isOptionalItem(item: AdminComplianceTrackerItem): boolean {
-  return OPTIONAL_KEYS.has(item.requirementKey);
-}
-
-function exportGroupCsv(group: ProjectGroup) {
-  const header = ["Project", "Title", "Due date", "Status", "Supplied by", "Client"];
-  const lines = [
-    header.join(","),
-    ...group.items.map((i) =>
-      [
-        csvEscape(group.projectName),
-        csvEscape(i.title),
-        i.dueDate,
-        i.status,
-        i.suppliedBy,
-        csvEscape(group.clientName),
-      ].join(",")
-    ),
-  ];
-  const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `compliance-${group.projectId.slice(0, 8)}.csv`;
-  a.click();
-  URL.revokeObjectURL(url);
-  toast.success("Exported CSV.");
-}
-
-function csvEscape(s: string): string {
-  if (/[",\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
-  return s;
-}
-
 export default function ComplianceTrackerPage() {
   const [loading, setLoading] = useState(true);
   const [items, setItems] = useState<AdminComplianceTrackerItem[]>([]);
-  const [reviewingId, setReviewingId] = useState<string | null>(null);
-  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
-  const [viewByProject, setViewByProject] = useState<Record<string, ViewMode>>({});
-  const [uploadingId, setUploadingId] = useState<string | null>(null);
-  const [uploadModalId, setUploadModalId] = useState<string | null>(null);
+  const [projectSearch, setProjectSearch] = useState("");
 
   const load = useCallback(async () => {
     try {
@@ -184,88 +65,6 @@ export default function ComplianceTrackerPage() {
     void load();
   }, [load]);
 
-  const reviewItem = async (itemId: string, decision: "approved" | "rejected") => {
-    if (decision === "rejected") {
-      const ok = window.confirm(
-        "Reject this upload? The client can submit a revised file on their compliance page."
-      );
-      if (!ok) return;
-    }
-    setReviewingId(itemId);
-    try {
-      const res = await fetch(`/api/compliance-tracker/${itemId}/review`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ decision }),
-      });
-      const data = (await res.json()) as { error?: string };
-      if (!res.ok) {
-        toast.error(data.error ?? "Update failed.");
-        return;
-      }
-      toast.success(decision === "approved" ? "Document approved." : "Document rejected.");
-      await load();
-    } catch {
-      toast.error("Update failed.");
-    } finally {
-      setReviewingId(null);
-    }
-  };
-
-  const uploadSolarDiagram = async (itemId: string, file: File) => {
-    const uploadError = validateUploadFileSize(
-      file,
-      COMPLIANCE_ATTACHMENT_ALLOWED_TYPES,
-      "Invalid file type. Use PDF, JPEG, PNG, or WebP."
-    );
-    if (uploadError) {
-      toast.error(uploadError);
-      return;
-    }
-
-    setUploadingId(itemId);
-    try {
-      const fd = new FormData();
-      fd.append("file", file);
-      const res = await fetch(`/api/compliance-tracker/${itemId}/upload`, {
-        method: "POST",
-        body: fd,
-      });
-      const payload = (await res.json()) as { error?: string };
-      if (!res.ok) {
-        toast.error(payload.error ?? "Upload failed.");
-        return;
-      }
-      toast.success("Solar diagram uploaded successfully.");
-      setUploadModalId(null);
-      await load();
-    } catch {
-      toast.error("Upload failed.");
-    } finally {
-      setUploadingId(null);
-    }
-  };
-
-  const removeUploadedDiagram = async (itemId: string) => {
-    setUploadingId(itemId);
-    try {
-      const res = await fetch(`/api/compliance-tracker/${itemId}/upload`, {
-        method: "DELETE",
-      });
-      if (!res.ok) {
-        const j = (await res.json()) as { error?: string };
-        toast.error(j.error ?? "Could not remove diagram.");
-        return;
-      }
-      toast.success("Solar diagram removed.");
-      await load();
-    } catch {
-      toast.error("Could not remove diagram.");
-    } finally {
-      setUploadingId(null);
-    }
-  };
-
   const projectGroups = useMemo(() => {
     const map = new Map<string, ProjectGroup>();
     for (const item of items) {
@@ -274,6 +73,7 @@ export default function ComplianceTrackerPage() {
         g = {
           projectId: item.projectId,
           projectName: item.projectName,
+          location: item.location,
           clientName: item.clientName,
           clientEmail: item.clientEmail,
           items: [],
@@ -285,28 +85,20 @@ export default function ComplianceTrackerPage() {
     return Array.from(map.values()).sort((a, b) => a.projectName.localeCompare(b.projectName));
   }, [items]);
 
-  useEffect(() => {
-    if (projectGroups.length === 0) {
-      setSelectedProjectId(null);
-      return;
-    }
-    setSelectedProjectId((prev) => {
-      if (prev && projectGroups.some((g) => g.projectId === prev)) return prev;
-      return projectGroups[0].projectId;
-    });
-  }, [projectGroups]);
+  const today = manilaToday();
 
-  const selectedGroup = useMemo(
-    () => projectGroups.find((g) => g.projectId === selectedProjectId) ?? null,
-    [projectGroups, selectedProjectId]
-  );
-
-  const setProjectView = (projectId: string, mode: ViewMode) => {
-    setViewByProject((prev) => ({ ...prev, [projectId]: mode }));
-  };
-
-  const getProjectView = (projectId: string): ViewMode =>
-    viewByProject[projectId] ?? "kanban";
+  const filteredProjectGroups = useMemo(() => {
+    if (!projectSearch.trim()) return projectGroups;
+    const q = projectSearch.toLowerCase();
+    return projectGroups.filter(
+      (g) =>
+        g.projectName.toLowerCase().includes(q) ||
+        g.projectId.toLowerCase().includes(q) ||
+        g.clientName.toLowerCase().includes(q) ||
+        g.clientEmail.toLowerCase().includes(q) ||
+        (g.location && g.location.toLowerCase().includes(q))
+    );
+  }, [projectGroups, projectSearch]);
 
   if (loading) {
     return (
@@ -325,10 +117,6 @@ export default function ComplianceTrackerPage() {
           </div>
           <h1 className="text-xl font-bold tracking-tight text-slate-900">Compliance tracker</h1>
         </div>
-        <p className="mt-1 text-xs text-slate-500 max-w-2xl leading-relaxed">
-          Only clients who completed a <strong className="font-semibold text-brand">site inspection</strong>{" "}
-          booking appear here. Requirements are grouped by project, then by status.
-        </p>
       </header>
 
       {projectGroups.length === 0 ? (
@@ -341,711 +129,113 @@ export default function ComplianceTrackerPage() {
         </div>
       ) : (
         <div className="space-y-4">
-          {projectGroups.length > 1 && (
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between rounded-xl border border-slate-200/90 bg-white px-4 py-3 shadow-sm">
-              <div className="flex items-center gap-2 text-xs text-slate-500">
-                <FolderKanban className="h-4 w-4 text-brand shrink-0" />
-                <span>
-                  <span className="font-medium text-slate-700">{projectGroups.length} projects</span>
-                  {" · "}
-                  Choose one to review compliance for that site.
-                </span>
-              </div>
-              <div className="min-w-0 sm:max-w-md sm:flex-1 sm:pl-4">
-                <label htmlFor="compliance-project" className="sr-only">
-                  Project
-                </label>
-                <select
-                  id="compliance-project"
-                  className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-medium text-slate-900 outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
-                  value={selectedProjectId ?? ""}
-                  onChange={(e) => setSelectedProjectId(e.target.value || null)}
-                >
-                  {projectGroups.map((g) => (
-                    <option key={g.projectId} value={g.projectId}>
-                      {g.projectName} — {g.clientName} ({g.items.length} requirements)
-                    </option>
-                  ))}
-                </select>
+          {/* Top Filter */}
+          {projectGroups.length > 2 && (
+            <div className="flex justify-end">
+              <div className="relative w-full sm:w-64">
+                <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="text"
+                  value={projectSearch}
+                  onChange={(e) => setProjectSearch(e.target.value)}
+                  placeholder="Search project ID, name, or address..."
+                  className="h-9 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-3 text-xs text-slate-900 placeholder-slate-400 outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 shadow-sm"
+                />
               </div>
             </div>
           )}
 
-          {selectedGroup ? (
-            <ProjectSection
-              key={selectedGroup.projectId}
-              group={selectedGroup}
-              viewMode={getProjectView(selectedGroup.projectId)}
-              onViewModeChange={(m) => setProjectView(selectedGroup.projectId, m)}
-              reviewingId={reviewingId}
-              onReview={reviewItem}
-              uploadingId={uploadingId}
-              uploadModalId={uploadModalId}
-              onUploadModalChange={setUploadModalId}
-              onUploadSolarDiagram={uploadSolarDiagram}
-              onRemoveUploadedDiagram={removeUploadedDiagram}
-            />
-          ) : null}
-        </div>
-      )}
-    </div>
-  );
-}
+          {/* Grid of Clickable Project Rectangles */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {filteredProjectGroups.map((g) => {
+              const total = g.items.length;
+              const nResolved = g.items.filter(isResolvedItem).length;
+              const nOverdue = g.items.filter((i) => !isResolvedItem(i) && i.dueDate < today).length;
+              const nPendingReview = g.items.filter((i) => i.status === "submitted").length;
+              const nAwaitingClient = g.items.filter((i) => i.status === "pending" && i.suppliedBy === "client").length;
+              const pct = total > 0 ? Math.round((nResolved / total) * 100) : 0;
 
-function ProjectSection(props: {
-  group: ProjectGroup;
-  viewMode: ViewMode;
-  onViewModeChange: (m: ViewMode) => void;
-  reviewingId: string | null;
-  onReview: (id: string, d: "approved" | "rejected") => void;
-  uploadingId: string | null;
-  uploadModalId: string | null;
-  onUploadModalChange: (id: string | null) => void;
-  onUploadSolarDiagram: (itemId: string, file: File) => void;
-  onRemoveUploadedDiagram: (itemId: string) => void;
-}) {
-  const { group, viewMode, onViewModeChange, reviewingId, onReview, uploadingId, uploadModalId, onUploadModalChange, onUploadSolarDiagram, onRemoveUploadedDiagram } = props;
-  const today = manilaToday();
-
-  const { laneOverdue, laneActive, laneResolved, stats } = useMemo(() => {
-    const sorted = [...group.items].sort((a, b) => a.dueDate.localeCompare(b.dueDate));
-    const resolved = sorted.filter(isResolvedItem);
-    const unresolved = sorted.filter((i) => !isResolvedItem(i));
-    const overdue = unresolved.filter((i) => i.dueDate < today);
-    const active = unresolved.filter((i) => i.dueDate >= today);
-    const nOverdue = overdue.length;
-    const nActive = active.length;
-    const nResolved = resolved.length;
-    const total = group.items.length;
-    const pct = total ? Math.round((nResolved / total) * 100) : 0;
-    return {
-      laneOverdue: overdue,
-      laneActive: active,
-      laneResolved: resolved,
-      stats: { total, nOverdue, nActive, nResolved, pct },
-    };
-  }, [group.items, today]);
-
-  const byCat = useMemo(
-    () =>
-      CATEGORY_ORDER.reduce(
-        (acc, key) => {
-          acc[key] = group.items.filter((i) => bucketItem(i) === key);
-          return acc;
-        },
-        {} as Record<CategoryKey, AdminComplianceTrackerItem[]>
-      ),
-    [group.items]
-  );
-
-  const timelineSorted = useMemo(
-    () => [...group.items].sort((a, b) => a.dueDate.localeCompare(b.dueDate)),
-    [group.items]
-  );
-
-  return (
-    <section className="rounded-xl border border-slate-200/90 bg-white shadow-sm overflow-hidden">
-      {/* Stats */}
-      <div className="grid grid-cols-2 gap-2.5 border-b border-slate-100 bg-slate-50/50 p-4 sm:grid-cols-4">
-        <StatCard label="Total requirements" value={stats.total} pill="Active project" pillTone="up" />
-        <StatCard
-          label="Overdue"
-          value={stats.nOverdue}
-          valueClass={stats.nOverdue ? "text-red-600" : undefined}
-          pill={stats.nOverdue ? "Action needed" : "Clear"}
-          pillTone={stats.nOverdue ? "dn" : "up"}
-        />
-        <StatCard
-          label="Awaiting client"
-          value={stats.nActive}
-          valueClass="text-amber-600"
-          pill="In progress"
-          pillTone="up"
-        />
-        <StatCard
-          label="Resolved"
-          value={stats.nResolved}
-          valueClass="text-brand"
-          pill={`${stats.pct}% complete`}
-          pillTone="up"
-        />
-      </div>
-
-      {/* Client strip */}
-      <div className="flex flex-col gap-4 border-b border-slate-100 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-center gap-3.5 min-w-0">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px] bg-brand-50 text-sm font-bold text-brand border border-brand-100">
-            {initials(group.clientName)}
-          </div>
-          <div className="min-w-0">
-            <h2 className="text-sm font-semibold text-slate-900 truncate">{group.projectName}</h2>
-            <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-slate-500">
-              <span className="inline-flex items-center gap-1">
-                <User className="h-3 w-3 shrink-0" />
-                {group.clientName}
-              </span>
-              <span className="inline-flex items-center gap-1">
-                <Mail className="h-3 w-3 shrink-0" />
-                {group.clientEmail}
-              </span>
-            </div>
-          </div>
-        </div>
-        <div className="flex flex-wrap items-center gap-2 shrink-0">
-          <span className="rounded-lg border border-brand-200 bg-brand-50 px-2.5 py-1 text-[11px] font-medium text-brand-800">
-            {group.projectName}
-          </span>
-          <Link
-            href={`/projects/${group.projectId}`}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-brand-dark px-3.5 py-2 text-[11px] font-medium text-white hover:bg-brand transition-colors"
-          >
-            Open project
-            <ArrowRight className="h-3.5 w-3.5" />
-          </Link>
-        </div>
-      </div>
-
-      {/* Toolbar */}
-      <div className="flex flex-col gap-3 border-b border-slate-100 px-4 py-3 sm:flex-row sm:items-center sm:justify-between bg-white">
-        <div className="inline-flex rounded-lg border border-slate-200 bg-slate-50/80 p-0.5">
-          {(
-            [
-              ["kanban", "Kanban", LayoutGrid],
-              ["list", "List", List],
-              ["timeline", "Timeline", ListChecks],
-            ] as const
-          ).map(([key, label, Icon]) => (
-            <button
-              key={key}
-              type="button"
-              onClick={() => onViewModeChange(key)}
-              className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[11px] font-medium transition-colors cursor-pointer ${
-                viewMode === key
-                  ? "bg-brand-dark text-white shadow-sm"
-                  : "text-slate-500 hover:text-slate-800"
-              }`}
-            >
-              <Icon className="h-3.5 w-3.5" />
-              {label}
-            </button>
-          ))}
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={() => exportGroupCsv(group)}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-brand-200 bg-brand-50 px-3 py-1.5 text-[11px] font-medium text-brand-800 hover:bg-brand-100 cursor-pointer"
-          >
-            <ExternalLink className="h-3 w-3" />
-            Export
-          </button>
-          <button
-            type="button"
-            onClick={() => void toast.info("Add requirement is not available yet.")}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-brand bg-brand px-3 py-1.5 text-[11px] font-medium text-white hover:bg-brand-dark cursor-pointer"
-          >
-            <Plus className="h-3 w-3" />
-            Add requirement
-          </button>
-        </div>
-      </div>
-
-      <div className="p-4 sm:p-5 bg-slate-50/40">
-        {viewMode === "kanban" && (
-          <div className="grid grid-cols-1 gap-3.5 lg:grid-cols-3">
-            <KanbanLane
-              title="Overdue"
-              tone="overdue"
-              items={laneOverdue}
-              today={today}
-              reviewingId={reviewingId}
-              onReview={onReview}
-              clientEmail={group.clientEmail}
-              uploadingId={uploadingId}
-              uploadModalId={uploadModalId}
-              onUploadModalChange={onUploadModalChange}
-              onUploadSolarDiagram={onUploadSolarDiagram}
-              onRemoveUploadedDiagram={onRemoveUploadedDiagram}
-            />
-            <KanbanLane
-              title="Awaiting client"
-              tone="default"
-              items={laneActive}
-              today={today}
-              reviewingId={reviewingId}
-              onReview={onReview}
-              clientEmail={group.clientEmail}
-              uploadingId={uploadingId}
-              uploadModalId={uploadModalId}
-              onUploadModalChange={onUploadModalChange}
-              onUploadSolarDiagram={onUploadSolarDiagram}
-              onRemoveUploadedDiagram={onRemoveUploadedDiagram}
-            />
-            <KanbanLane
-              title="Resolved"
-              tone="done"
-              items={laneResolved}
-              today={today}
-              reviewingId={reviewingId}
-              onReview={onReview}
-              clientEmail={group.clientEmail}
-              uploadingId={uploadingId}
-              uploadModalId={uploadModalId}
-              onUploadModalChange={onUploadModalChange}
-              onUploadSolarDiagram={onUploadSolarDiagram}
-              onRemoveUploadedDiagram={onRemoveUploadedDiagram}
-            />
-          </div>
-        )}
-
-        {viewMode === "list" && (
-          <div className="space-y-5">
-            {CATEGORY_ORDER.map((cat) => {
-              const catItems = byCat[cat];
-              if (catItems.length === 0) return null;
-              const meta = CATEGORY_META[cat];
               return (
-                <div key={cat} className={`rounded-xl border p-4 ${meta.borderClass}`}>
-                  <div className="flex items-baseline justify-between gap-2 mb-1">
-                    <h3 className="text-sm font-semibold text-slate-900">{meta.title}</h3>
-                    <span className="text-xs font-medium text-slate-500 tabular-nums">{catItems.length}</span>
+                <Link
+                  key={g.projectId}
+                  href={`/compliance-tracker/${g.projectId}`}
+                  className="group relative flex flex-col justify-between text-left rounded-2xl border border-slate-200/90 bg-white p-5 transition-all duration-200 hover:border-brand hover:shadow-lg hover:-translate-y-0.5 cursor-pointer"
+                >
+                  <div>
+                    {/* Header: Project ID, Name & Status Badge */}
+                    <div className="flex items-start justify-between gap-2 mb-2">
+                      <div className="min-w-0 flex-1">
+                          <h3 className="text-base font-bold text-slate-900 truncate group-hover:text-brand transition-colors">
+                            <span className="text-slate-400 font-mono mr-2">{g.projectId.slice(0, 8).toUpperCase()}</span>
+                            {g.projectName}
+                          </h3>
+                        {g.location ? (
+                          <p className="text-xs text-slate-500 truncate flex items-center gap-1 mb-1">
+                            <MapPin className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                            <span className="truncate">{g.location}</span>
+                          </p>
+                        ) : null}
+                        <p className="text-xs text-slate-500 truncate flex items-center gap-1.5">
+                          <User className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                          <span className="font-medium text-slate-700">{g.clientName}</span>
+                        </p>
+                      </div>
+                      {nOverdue > 0 ? (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-red-50 px-2.5 py-0.5 text-[11px] font-semibold text-red-700 border border-red-200 shrink-0">
+                          Overdue ({nOverdue})
+                        </span>
+                      ) : nPendingReview > 0 ? (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-0.5 text-[11px] font-semibold text-amber-700 border border-amber-200 shrink-0">
+                          Needs Review ({nPendingReview})
+                        </span>
+                      ) : pct === 100 ? (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-700 border border-emerald-200 shrink-0">
+                          100% Complete
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2.5 py-0.5 text-[11px] font-semibold text-blue-700 border border-blue-200 shrink-0">
+                          In Progress
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Requirements Badges */}
+                    <div className="flex flex-wrap gap-1.5 my-3">
+                      <span className="inline-flex items-center rounded-md bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600">
+                        {total} Requirements
+                      </span>
+                      {nResolved > 0 && (
+                        <span className="inline-flex items-center rounded-md bg-emerald-100/70 px-2 py-0.5 text-[11px] font-medium text-emerald-800">
+                          {nResolved} Passed
+                        </span>
+                      )}
+                      {nAwaitingClient > 0 && (
+                        <span className="inline-flex items-center rounded-md bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-700">
+                          {nAwaitingClient} Awaiting Client
+                        </span>
+                      )}
+                    </div>
                   </div>
-                  <p className="text-xs text-slate-600 mb-3">{meta.hint}</p>
-                  <ul className="space-y-2">
-                    {catItems.map((item) => (
-                      <ListRowItem
-                        key={item.id}
-                        item={item}
-                        cat={cat}
-                        reviewingId={reviewingId}
-                        onReview={onReview}
-                      />
-                    ))}
-                  </ul>
-                </div>
+
+                  {/* Footer: Progress Bar & Action CTA */}
+                  <div className="pt-3 border-t border-slate-100 mt-2 space-y-2">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-slate-500 font-medium">Compliance Progress</span>
+                      <span className="font-bold text-slate-900">{pct}%</span>
+                    </div>
+                    <ProgressBar value={pct} size="sm" showLabel={false} />
+
+                    <div className="flex items-center justify-between text-xs font-semibold text-brand pt-1 group-hover:underline">
+                      <span>Open Compliance Tracker</span>
+                      <ChevronRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
+                    </div>
+                  </div>
+                </Link>
               );
             })}
           </div>
-        )}
-
-        {viewMode === "timeline" && (
-          <ul className="space-y-2">
-            {timelineSorted.map((item) => (
-              <li
-                key={item.id}
-                className="flex flex-wrap items-start justify-between gap-3 rounded-lg border border-slate-200 bg-white px-4 py-3"
-              >
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium text-slate-900">{item.title}</p>
-                  <p className="mt-0.5 text-xs text-slate-500 line-clamp-2">{item.description}</p>
-                  <p className="mt-2 inline-flex items-center gap-1 text-[11px] text-slate-500">
-                    <Calendar className="h-3 w-3" />
-                    Due {formatDate(item.dueDate)}
-                  </p>
-                </div>
-                <div className="flex shrink-0 flex-col items-end gap-1">
-                  <StatusBadge status={item.status} size="sm" />
-                  {item.fileUrl && (
-                    <a
-                      href={item.fileUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-xs font-medium text-brand hover:underline"
-                    >
-                      View file
-                    </a>
-                  )}
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
-    </section>
-  );
-}
-
-function StatCard(props: {
-  label: string;
-  value: number;
-  valueClass?: string;
-  pill: string;
-  pillTone: "up" | "dn";
-}) {
-  const { label, value, valueClass, pill, pillTone } = props;
-  return (
-    <div className="rounded-[10px] border border-slate-200/90 bg-white px-4 py-3.5 shadow-sm">
-      <div className={`text-[22px] font-bold tabular-nums text-slate-900 leading-none ${valueClass ?? ""}`}>
-        {value}
-      </div>
-      <div className="mt-1 text-[10px] font-medium uppercase tracking-wide text-slate-400">{label}</div>
-      <div
-        className={`mt-1.5 inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[9px] font-semibold ${
-          pillTone === "up" ? "bg-brand-50 text-brand-800" : "bg-red-50 text-red-800"
-        }`}
-      >
-        {pill}
-      </div>
-    </div>
-  );
-}
-
-function KanbanLane(props: {
-  title: string;
-  tone: "overdue" | "default" | "done";
-  items: AdminComplianceTrackerItem[];
-  today: string;
-  reviewingId: string | null;
-  onReview: (id: string, d: "approved" | "rejected") => void;
-  clientEmail: string;
-  uploadingId: string | null;
-  uploadModalId: string | null;
-  onUploadModalChange: (id: string | null) => void;
-  onUploadSolarDiagram: (itemId: string, file: File) => void;
-  onRemoveUploadedDiagram: (itemId: string) => void;
-}) {
-  const { title, tone, items, today, reviewingId, onReview, clientEmail, uploadingId, uploadModalId, onUploadModalChange, onUploadSolarDiagram, onRemoveUploadedDiagram } = props;
-  const headCls =
-    tone === "overdue"
-      ? "text-red-700"
-      : tone === "done"
-        ? "text-brand-800"
-        : "text-slate-600";
-  const countCls =
-    tone === "overdue"
-      ? "border-red-200 bg-red-50 text-red-800"
-      : tone === "done"
-        ? "border-brand-200 bg-brand-50 text-brand-900"
-        : "border-slate-200 bg-white text-slate-600";
-
-  return (
-    <div
-      className={`rounded-xl p-3.5 ${
-        tone === "overdue" ? "bg-red-50/30" : tone === "done" ? "bg-brand-50/20" : "bg-slate-100"
-      }`}
-    >
-      <div className="mb-3 flex items-center justify-between">
-        <span className={`text-[11px] font-semibold uppercase tracking-wide ${headCls}`}>{title}</span>
-        <span
-          className={`flex h-5 min-w-5 items-center justify-center rounded-md border px-1 text-[10px] font-bold ${countCls}`}
-        >
-          {items.length}
-        </span>
-      </div>
-      <div className="space-y-2">
-        {items.length === 0 ? (
-          <p className="rounded-lg bg-white/60 py-8 text-center text-[11px] text-slate-400">
-            No items
-          </p>
-        ) : (
-          items.map((item) => (
-            <KanbanCard
-              key={item.id}
-              item={item}
-              today={today}
-              reviewingId={reviewingId}
-              onReview={onReview}
-              clientEmail={clientEmail}
-              uploadingId={uploadingId}
-              uploadModalId={uploadModalId}
-              onUploadModalChange={onUploadModalChange}
-              onUploadSolarDiagram={onUploadSolarDiagram}
-              onRemoveUploadedDiagram={onRemoveUploadedDiagram}
-            />
-          ))
-        )}
-      </div>
-    </div>
-  );
-}
-
-function KanbanCard(props: {
-  item: AdminComplianceTrackerItem;
-  today: string;
-  reviewingId: string | null;
-  onReview: (id: string, d: "approved" | "rejected") => void;
-  clientEmail: string;
-  uploadingId: string | null;
-  uploadModalId: string | null;
-  onUploadModalChange: (id: string | null) => void;
-  onUploadSolarDiagram: (itemId: string, file: File) => void;
-  onRemoveUploadedDiagram: (itemId: string) => void;
-}) {
-  const { item, today, reviewingId, onReview, clientEmail, uploadingId, uploadModalId, onUploadModalChange, onUploadSolarDiagram, onRemoveUploadedDiagram } = props;
-  const overdue = !isResolvedItem(item) && item.dueDate < today;
-
-  const { label, badgeClass } = cardPrimaryBadge(item, overdue);
-  const leftBorder = overdue
-    ? "border-l-[3px] border-l-red-500 rounded-l-none"
-    : item.status === "approved" || item.status === "waived"
-      ? "border-l-[3px] border-l-brand rounded-l-none"
-      : "";
-
-  const remindHref = `mailto:${encodeURIComponent(clientEmail)}?subject=${encodeURIComponent(
-    `Reminder: ${item.title} (due ${formatDate(item.dueDate)})`
-  )}&body=${encodeURIComponent("Hi,\n\nThis is a friendly reminder about an outstanding compliance item.\n\nThank you.")}`;
-
-  return (
-    <div
-      className={`rounded-lg border border-slate-200/90 bg-white px-3.5 py-3 shadow-sm transition-colors hover:border-brand-200 ${leftBorder}`}
-    >
-      <div className="flex items-start justify-between gap-2 mb-1">
-        <p className="text-xs font-semibold text-slate-900 leading-snug flex-1">{item.title}</p>
-        <span className={`shrink-0 rounded-full px-2 py-0.5 text-[9px] font-semibold ${badgeClass}`}>
-          {label}
-        </span>
-      </div>
-      {isOptionalItem(item) && (
-        <div className="mb-1.5">
-          <span className="inline-block rounded-full bg-slate-100 px-1.5 py-px text-[9px] text-slate-500">
-            Optional
-          </span>
         </div>
       )}
-      <p className="text-[11px] text-slate-500 leading-snug line-clamp-2 mb-2">{item.description}</p>
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div
-          className={`inline-flex items-center gap-1 text-[10px] ${
-            overdue ? "font-medium text-red-600" : "text-slate-500"
-          }`}
-        >
-          <Calendar className={`h-2.5 w-2.5 shrink-0 ${overdue ? "text-red-500" : ""}`} />
-          {formatDate(item.dueDate)}
-        </div>
-        <div className="flex flex-wrap items-center gap-2 justify-end">
-          {bucketItem(item) === "pending_review" && item.documentId && (
-            <>
-              <button
-                type="button"
-                onClick={() => void onReview(item.id, "approved")}
-                disabled={reviewingId === item.id}
-                className="text-[10px] font-semibold text-brand hover:underline disabled:opacity-50 cursor-pointer"
-              >
-                {reviewingId === item.id ? "…" : "Approve"}
-              </button>
-              <button
-                type="button"
-                onClick={() => void onReview(item.id, "rejected")}
-                disabled={reviewingId === item.id}
-                className="text-[10px] font-semibold text-red-600 hover:underline disabled:opacity-50 cursor-pointer"
-              >
-                Reject
-              </button>
-            </>
-          )}
-          {item.fileUrl && (
-            <a
-              href={item.fileUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-[10px] font-semibold text-brand hover:underline"
-            >
-              View file →
-            </a>
-          )}
-          {overdue && item.suppliedBy === "client" && item.status === "pending" && (
-            <a href={remindHref} className="text-[10px] font-semibold text-brand hover:underline">
-              Remind client →
-            </a>
-          )}
-          {item.suppliedBy === "admin" && (
-            <>
-              {item.fileUrl && (
-                <a
-                  href={item.fileUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-[10px] font-semibold text-brand hover:underline"
-                >
-                  View diagram →
-                </a>
-              )}
-              <button
-                type="button"
-                onClick={() => onUploadModalChange(item.id)}
-                disabled={uploadingId === item.id}
-                className="text-[10px] font-semibold text-brand hover:underline disabled:opacity-50 cursor-pointer"
-              >
-                {uploadingId === item.id ? "…" : item.fileUrl ? "Update diagram" : "Upload diagram"}
-              </button>
-              {item.fileUrl && (
-                <button
-                  type="button"
-                  onClick={() => void onRemoveUploadedDiagram(item.id)}
-                  disabled={uploadingId === item.id}
-                  className="text-[10px] font-semibold text-red-600 hover:underline disabled:opacity-50 cursor-pointer"
-                >
-                  Remove
-                </button>
-              )}
-              {uploadModalId === item.id && (
-                <UploadSolarDiagramModal
-                  itemId={item.id}
-                  itemTitle={item.title}
-                  onClose={() => onUploadModalChange(null)}
-                  onUpload={onUploadSolarDiagram}
-                />
-              )}
-            </>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function cardPrimaryBadge(
-  item: AdminComplianceTrackerItem,
-  overdue: boolean
-): { label: string; badgeClass: string } {
-  if (item.status === "waived") return { label: "Waived", badgeClass: "bg-orange-100 text-orange-900" };
-  if (item.status === "approved") return { label: "Approved", badgeClass: "bg-brand-100 text-brand-900" };
-  if (item.suppliedBy === "admin" && item.status === "pending")
-    return { label: "GS provides", badgeClass: "bg-slate-100 text-slate-600" };
-  if (item.status === "rejected") return { label: "Rejected", badgeClass: "bg-red-100 text-red-800" };
-  if (item.status === "submitted") return { label: "In review", badgeClass: "bg-sky-100 text-sky-900" };
-  if (overdue) return { label: "Overdue", badgeClass: "bg-red-100 text-red-800" };
-  return { label: "Pending", badgeClass: "bg-amber-100 text-amber-900" };
-}
-
-function ListRowItem(props: {
-  item: AdminComplianceTrackerItem;
-  cat: CategoryKey;
-  reviewingId: string | null;
-  onReview: (id: string, d: "approved" | "rejected") => void;
-}) {
-  const { item, cat, reviewingId, onReview } = props;
-  return (
-    <li className="flex flex-wrap items-start justify-between gap-2 rounded-lg border border-white/60 bg-white/80 px-3 py-2.5">
-      <div className="min-w-0 flex-1">
-        <p className="text-sm font-medium text-slate-900">{item.title}</p>
-        <p className="mt-0.5 text-xs text-slate-500 line-clamp-2">{item.description}</p>
-        <p className="mt-1.5 inline-flex items-center gap-1 text-xs text-slate-500">
-          <Calendar className="h-3 w-3 shrink-0" />
-          Due {formatDate(item.dueDate)}
-        </p>
-        {cat === "pending_review" && item.documentId && (
-          <div className="mt-3 flex flex-wrap gap-2">
-            <Button
-              type="button"
-              size="sm"
-              variant="primary"
-              icon={reviewingId === item.id ? Loader2 : Check}
-              className={`!h-8 ${reviewingId === item.id ? "[&_svg]:animate-spin" : ""}`}
-              disabled={reviewingId === item.id}
-              onClick={() => void onReview(item.id, "approved")}
-            >
-              {reviewingId === item.id ? "Saving…" : "Approve"}
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              icon={X}
-              className="!h-8"
-              disabled={reviewingId === item.id}
-              onClick={() => void onReview(item.id, "rejected")}
-            >
-              Reject
-            </Button>
-          </div>
-        )}
-      </div>
-      <div className="flex shrink-0 flex-col items-end gap-1">
-        <StatusBadge status={item.status} size="sm" />
-        {item.fileUrl && (
-          <a
-            href={item.fileUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-xs font-medium text-brand hover:underline"
-          >
-            View file
-          </a>
-        )}
-      </div>
-    </li>
-  );
-}
-
-function UploadSolarDiagramModal(props: {
-  itemId: string;
-  itemTitle: string;
-  onClose: () => void;
-  onUpload: (itemId: string, file: File) => void;
-}) {
-  const { itemId, itemTitle, onClose, onUpload } = props;
-  const [dragOver, setDragOver] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    setDragOver(false);
-    const file = e.dataTransfer.files[0];
-    if (file) {
-      onUpload(itemId, file);
-    }
-  };
-
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      onUpload(itemId, file);
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
-      <div className="rounded-xl bg-white shadow-lg max-w-md w-full p-6">
-        <div className="flex items-start justify-between gap-2 mb-4">
-          <div className="min-w-0">
-            <h3 className="font-semibold text-slate-900">Upload Solar Diagram</h3>
-            <p className="text-xs text-slate-500 mt-1 line-clamp-1">{itemTitle}</p>
-          </div>
-          <button
-            onClick={onClose}
-            className="shrink-0 text-slate-400 hover:text-slate-600 cursor-pointer"
-            aria-label="Close"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-
-        <div
-          onDrop={handleDrop}
-          onDragOver={(e) => {
-            e.preventDefault();
-            setDragOver(true);
-          }}
-          onDragLeave={() => setDragOver(false)}
-          className={`rounded-lg border-2 border-dashed p-8 text-center transition-colors ${
-            dragOver
-              ? "border-brand bg-brand-50"
-              : "border-slate-200 bg-slate-50 hover:border-brand-200"
-          }`}
-        >
-          <Upload className={`h-8 w-8 mx-auto mb-3 ${dragOver ? "text-brand" : "text-slate-300"}`} />
-          <p className="text-sm font-medium text-slate-900 mb-1">Drag and drop your diagram here</p>
-          <p className="text-xs text-slate-500 mb-4">or</p>
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            className="inline-block px-4 py-2 rounded-lg bg-brand text-white text-xs font-semibold hover:bg-brand-dark cursor-pointer"
-          >
-            Select File
-          </button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*,.pdf"
-            onChange={handleFileSelect}
-            className="hidden"
-            aria-label="Upload solar diagram"
-          />
-          <p className="text-[11px] text-slate-500 mt-4">
-            Supported: PDF, JPEG, PNG, WebP (Max 20MB for PDF, 15MB for images)
-          </p>
-        </div>
-      </div>
     </div>
   );
 }

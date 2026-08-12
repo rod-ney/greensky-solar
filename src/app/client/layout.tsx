@@ -10,6 +10,7 @@ import {
   getInitials,
   useSessionUser,
 } from "@/lib/client-session";
+import { APP_ICON } from "@/lib/app-icon";
 import NotificationBell from "@/components/profile/NotificationBell";
 
 export default function ClientLayout({
@@ -43,7 +44,7 @@ export default function ClientLayout({
     <div className="relative min-h-screen overflow-hidden bg-white">
       {/* Top Navbar */}
       <header className="sticky top-0 z-30 border-b border-slate-200/70 bg-white/85 backdrop-blur-md">
-        <div className="flex h-14 w-full items-center justify-between px-4 sm:px-6">
+        <div className="flex h-16 w-full items-center justify-between px-4 sm:px-6">
           {/* Left */}
           <div className="flex items-center gap-3">
             {!isHome && (
@@ -54,13 +55,14 @@ export default function ClientLayout({
                 <ArrowLeft className="h-4 w-4" />
               </Link>
             )}
-            <Link href="/client" className="flex items-center gap-2.5">
+            <Link href="/client" className="flex items-center gap-3">
               <Image
-                src="/logo_greensky.png"
+                src={APP_ICON}
                 alt="GreenSky Solar Energy"
-                width={120}
-                height={36}
-                className="h-9 w-auto object-contain"
+                width={48}
+                height={48}
+                className="h-11 w-11 shrink-0 object-contain sm:h-12 sm:w-12"
+                priority
               />
               <div className="flex flex-col">
                 <span className="text-base font-semibold leading-tight">
@@ -120,7 +122,7 @@ export default function ClientLayout({
       </header>
 
       {/* Content */}
-      <main className="relative z-10 mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-8">
+      <main className="relative z-10 mx-auto max-w-[1440px] px-4 py-6 sm:px-8 sm:py-8 lg:px-10">
         {children}
       </main>
     </div>

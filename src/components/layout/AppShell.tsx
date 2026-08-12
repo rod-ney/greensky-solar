@@ -48,6 +48,7 @@ export default function AppShell({
         onToggleCollapse={() => setSidebarCollapsed((p) => !p)}
       />
       <div
+        style={{ '--sidebar-width': sidebarCollapsed ? '5rem' : '16rem' } as React.CSSProperties}
         className={`relative z-10 flex flex-1 flex-col transition-[padding] duration-200 ${
           sidebarCollapsed ? "pl-20" : "pl-64"
         }`}

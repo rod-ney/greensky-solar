@@ -23,12 +23,14 @@ function jsonRequest(body: object) {
 }
 
 describe("POST /api/auth/reset-password", () => {
+  const validPassword = "Newpass123!";
+
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
   it("returns 400 for missing token", async () => {
-    const res = await POST(jsonRequest({ password: "newpass123" }));
+    const res = await POST(jsonRequest({ password: validPassword }));
     expect(res.status).toBe(400);
     const data = await res.json();
     expect(data.code).toBe("VALIDATION_ERROR");
@@ -41,7 +43,7 @@ describe("POST /api/auth/reset-password", () => {
 
   it("returns 400 for invalid token", async () => {
     consumePasswordResetToken.mockResolvedValue(null);
-    const res = await POST(jsonRequest({ token: "invalid", password: "newpass123" }));
+    const res = await POST(jsonRequest({ token: "invalid", password: validPassword }));
     expect(res.status).toBe(400);
     expect((await res.json()).error).toContain("Invalid");
   });
@@ -49,8 +51,8 @@ describe("POST /api/auth/reset-password", () => {
   it("returns 200 and updates password on valid token", async () => {
     consumePasswordResetToken.mockResolvedValue({ userId: "u1" });
     updatePasswordInDb.mockResolvedValue(undefined);
-    const res = await POST(jsonRequest({ token: "valid-token", password: "newpass123" }));
+    const res = await POST(jsonRequest({ token: "valid-token", password: validPassword }));
     expect(res.status).toBe(200);
-    expect(updatePasswordInDb).toHaveBeenCalledWith("u1", "newpass123");
+    expect(updatePasswordInDb).toHaveBeenCalledWith("u1", validPassword);
   });
 });

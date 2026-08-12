@@ -865,6 +865,29 @@ export async function getPaymentById(id: string): Promise<Payment | null> {
   };
 }
 
+async function syncInvoiceStatusFromBooking(bookingRef: string, paymentStatus?: Payment["status"]): Promise<void> {
+  if (!bookingRef) return;
+  const bookingResult = await dbQuery<{ status: string | null }>(
+    `SELECT status FROM bookings WHERE reference_no = $1 OR id = $1 LIMIT 1`,
+    [bookingRef]
+  );
+  const bookingStatus = bookingResult.rows[0]?.status;
+  if (!bookingStatus) return;
+
+  let nextStatus: Payment["status"] | null = null;
+  if (bookingStatus === "completed") {
+    nextStatus = "paid";
+  } else if (bookingStatus === "confirmed") {
+    nextStatus = "pending";
+  } else if (bookingStatus === "cancelled") {
+    nextStatus = "cancelled";
+  }
+
+  if (nextStatus && paymentStatus !== nextStatus) {
+    await dbQuery(`UPDATE payments SET status = $2 WHERE booking_ref = $1 OR reference_no = $1`, [bookingRef, nextStatus]);
+  }
+}
+
 export async function updatePaymentInDb(
   id: string,
   data: {
@@ -911,6 +934,11 @@ export async function updatePaymentInDb(
   );
   const row = result.rows[0];
   if (!row) return null;
+
+  if (row.booking_ref) {
+    await syncInvoiceStatusFromBooking(row.booking_ref, row.status as Payment["status"]);
+  }
+
   return {
     id: row.id,
     referenceNo: row.reference_no,

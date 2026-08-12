@@ -1,13 +1,13 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
-import { Receipt, Plus, Search, Clock, CheckCircle2, AlertTriangle, RotateCcw, Edit2, Trash2 } from "lucide-react";
+import { Receipt, Search, Clock, CheckCircle2, AlertTriangle, RotateCcw, Edit2, Trash2 } from "lucide-react";
 import Button from "@/components/ui/Button";
 import Modal from "@/components/ui/Modal";
 import { getTodayInManila } from "@/lib/date-utils";
 import { formatCurrencyDecimal, formatDate } from "@/lib/format";
 import { toast } from "@/lib/toast";
-import type { Payment } from "@/types/client";
+import type { Booking, Payment, PaymentStatus } from "@/types/client";
 
 type InvoiceRow = Payment & { clientName?: string; userId?: string };
 
@@ -49,7 +49,9 @@ export default function InvoicePage() {
   const [editingInvoice, setEditingInvoice] = useState<InvoiceRow | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<InvoiceRow | null>(null);
   const [invoices, setInvoices] = useState<InvoiceRow[]>([]);
+  const [bookings, setBookings] = useState<Booking[]>([]);
   const [search, setSearch] = useState("");
+  const [isLoadingBookings, setIsLoadingBookings] = useState(false);
   const [clientUsers, setClientUsers] = useState<{ id: string; name: string; email: string }[]>([]);
   const [serviceType, setServiceType] = useState(SERVICE_OPTIONS[1]);
   const [amount, setAmount] = useState("");
@@ -62,7 +64,7 @@ export default function InvoicePage() {
   const [editDueDate, setEditDueDate] = useState("");
   const [editPaymentInstructions, setEditPaymentInstructions] = useState("");
   const [editClientUserId, setEditClientUserId] = useState("");
-  const [editStatus, setEditStatus] = useState<"paid" | "pending" | "overdue" | "refunded">("pending");
+  const [editStatus, setEditStatus] = useState<PaymentStatus>("pending");
   const [isEditing, setIsEditing] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const idempotencyKeyRef = useRef<string | null>(null);
@@ -78,12 +80,27 @@ export default function InvoicePage() {
     }
   }, []);
 
+  const loadBookings = useCallback(async () => {
+    try {
+      setIsLoadingBookings(true);
+      const res = await fetch("/api/bookings", { cache: "no-store" });
+      if (!res.ok) return;
+      const data = (await res.json()) as Booking[];
+      setBookings(data);
+    } catch {
+      setBookings([]);
+    } finally {
+      setIsLoadingBookings(false);
+    }
+  }, []);
+
   useEffect(() => {
     const load = async () => {
       try {
         const [usersRes] = await Promise.all([
           fetch("/api/users", { cache: "no-store" }),
           loadInvoices(),
+          loadBookings(),
         ]);
         if (usersRes.ok) {
           const users = (await usersRes.json()) as { id: string; name: string; email: string; role: string }[];
@@ -94,7 +111,7 @@ export default function InvoicePage() {
       }
     };
     void load();
-  }, [loadInvoices]);
+  }, [loadInvoices, loadBookings]);
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -142,6 +159,28 @@ export default function InvoicePage() {
       setClientUserId("");
       await loadInvoices();
       toast.success(`Invoice ${invoiceNo} created. It will appear in the client's Documents and Payments.`);
+    } catch {
+      toast.error("Failed to create invoice.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleCreateFromBooking = async (booking: Booking) => {
+    setIsSubmitting(true);
+    try {
+      const res = await fetch("/api/invoice", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bookingId: booking.id }),
+      });
+      const payload = (await res.json()) as { referenceNo?: string; error?: string };
+      if (!res.ok) {
+        toast.error(payload.error ?? "Failed to create invoice.");
+        return;
+      }
+      await Promise.all([loadInvoices(), loadBookings()]);
+      toast.success(`Invoice ${payload.referenceNo ?? ""} created for ${booking.referenceNo}.`);
     } catch {
       toast.error("Failed to create invoice.");
     } finally {
@@ -229,15 +268,64 @@ export default function InvoicePage() {
             Create and send invoices to clients
           </p>
         </div>
-        <Button
-          icon={Plus}
-          onClick={() => {
-            setShowCreateModal(true);
-            setDueDate(getTodayInManila());
-          }}
-        >
-          Create Invoice
-        </Button>
+        <div className="text-sm text-slate-500">Create invoices from booked services below</div>
+      </div>
+
+      <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
+        <div className="border-b border-slate-100 p-4">
+          <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 className="text-base font-semibold text-slate-900">Bookings ready for invoice</h2>
+              <p className="text-sm text-slate-500">Create an invoice directly from the service bookings below.</p>
+            </div>
+          </div>
+        </div>
+        {isLoadingBookings ? (
+          <div className="p-6 text-sm text-slate-500">Loading bookings...</div>
+        ) : bookings.length === 0 ? (
+          <div className="p-6 text-sm text-slate-500">No bookings available for invoice creation.</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[900px]">
+              <thead>
+                <tr className="border-b border-slate-100 bg-slate-50/60">
+                  <th className="px-5 py-3.5 text-left text-xs font-medium text-slate-500">Booking #</th>
+                  <th className="px-5 py-3.5 text-left text-xs font-medium text-slate-500">Client</th>
+                  <th className="px-5 py-3.5 text-left text-xs font-medium text-slate-500">Service</th>
+                  <th className="px-5 py-3.5 text-left text-xs font-medium text-slate-500">Amount</th>
+                  <th className="px-5 py-3.5 text-left text-xs font-medium text-slate-500">Date</th>
+                  <th className="px-5 py-3.5 text-left text-xs font-medium text-slate-500">Status</th>
+                  <th className="px-5 py-3.5 text-right text-xs font-medium text-slate-500">Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {bookings.map((booking) => {
+                  const alreadyInvoiced = invoices.some((inv) => inv.bookingRef === booking.referenceNo);
+                  return (
+                    <tr key={booking.id} className="hover:bg-slate-50/60 transition-colors">
+                      <td className="px-5 py-3.5 text-sm font-medium text-slate-900">{booking.referenceNo}</td>
+                      <td className="px-5 py-3.5 text-sm text-slate-600">{booking.clientName ?? "—"}</td>
+                      <td className="px-5 py-3.5 text-sm text-slate-600">{booking.serviceType}</td>
+                      <td className="px-5 py-3.5 text-sm font-medium text-slate-900">{formatCurrencyDecimal(booking.amount)}</td>
+                      <td className="px-5 py-3.5 text-sm text-slate-500">{formatDate(booking.date)}</td>
+                      <td className="px-5 py-3.5 text-sm text-slate-600">{booking.status}</td>
+                      <td className="px-5 py-3.5 text-right">
+                        <Button
+                          type="button"
+                          variant={alreadyInvoiced ? "outline" : "primary"}
+                          disabled={isSubmitting || alreadyInvoiced}
+                          onClick={() => void handleCreateFromBooking(booking)}
+                        >
+                          {alreadyInvoiced ? "Invoiced" : isSubmitting ? "Creating..." : "Create Invoice"}
+                        </Button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
       {/* Invoice Table */}
@@ -315,12 +403,17 @@ export default function InvoicePage() {
                           {inv.dueDate ? formatDate(inv.dueDate) : "—"}
                         </td>
                         <td className="px-5 py-3.5">
-                          <span
-                            className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-medium ${sc.bg} ${sc.text}`}
-                          >
-                            {sc.icon}
-                            {sc.label}
-                          </span>
+                          <div className="flex flex-col gap-1">
+                            <span
+                              className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-medium ${sc.bg} ${sc.text}`}
+                            >
+                              {sc.icon}
+                              {sc.label}
+                            </span>
+                            <span className="text-[11px] text-slate-500">
+                              {inv.status === "paid" ? "Paid invoice" : "Unpaid invoice"}
+                            </span>
+                          </div>
                         </td>
                         <td className="px-5 py-3.5 text-right">
                           <div className="flex items-center justify-end gap-1">
@@ -556,13 +649,14 @@ export default function InvoicePage() {
             </label>
             <select
               value={editStatus}
-              onChange={(e) => setEditStatus(e.target.value as typeof editStatus)}
+              onChange={(e) => setEditStatus(e.target.value as PaymentStatus)}
               className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand"
             >
               <option value="pending">Pending</option>
               <option value="paid">Paid</option>
               <option value="overdue">Overdue</option>
               <option value="refunded">Refunded</option>
+              <option value="cancelled">Cancelled</option>
             </select>
           </div>
 

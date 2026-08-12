@@ -62,6 +62,7 @@ export default function ClientProjectsPage() {
   const filtered = useMemo(() => {
     return projects.filter((p) => {
       const matchSearch =
+        p.id.toLowerCase().includes(search.toLowerCase()) ||
         p.name.toLowerCase().includes(search.toLowerCase()) ||
         p.location.toLowerCase().includes(search.toLowerCase());
       const matchStatus = statusFilter === "all" || p.status === statusFilter;
@@ -81,7 +82,7 @@ export default function ClientProjectsPage() {
     return (
       <div className="space-y-6">
         <div className="h-8 w-48 bg-slate-100 rounded animate-pulse" />
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4">
           {Array.from({ length: 3 }).map((_, i) => (
             <div key={i} className="rounded-2xl border border-slate-200 bg-white p-5 animate-pulse">
               <div className="h-4 w-2/3 bg-slate-100 rounded mb-3" />
@@ -131,7 +132,7 @@ export default function ClientProjectsPage() {
         <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
         <input
           type="text"
-          placeholder="Search by name or location..."
+          placeholder="Search by ID, name, or location..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="h-10 w-full rounded-xl border border-slate-200 bg-white pl-10 pr-4 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
@@ -162,18 +163,23 @@ export default function ClientProjectsPage() {
           ) : null}
         </WorkspaceEmpty>
       ) : (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4">
           {filtered.map((project) => (
             <Link
               key={project.id}
               href={`/client/projects/${project.id}`}
               className="group rounded-2xl border border-slate-200 bg-white p-5 transition-all hover:border-slate-300 hover:shadow-lg hover:-translate-y-0.5"
             >
-              {/* Top Row: Name + Status */}
+              {/* Top Row: ID + Name + Status */}
               <div className="flex items-start justify-between gap-2 mb-3">
-                <h3 className="text-sm font-semibold text-slate-900 group-hover:text-brand transition-colors line-clamp-1">
-                  {project.name}
-                </h3>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h3 className="text-sm font-semibold text-slate-900 group-hover:text-brand transition-colors line-clamp-1">
+                      <span className="text-slate-400 font-mono mr-2">{project.id.slice(0, 8).toUpperCase()}</span>
+                      {project.name}
+                    </h3>
+                  </div>
+                </div>
                 <StatusBadge status={project.status} size="sm" />
               </div>
 
@@ -189,7 +195,7 @@ export default function ClientProjectsPage() {
                   <span className="text-[10px] uppercase tracking-wider text-slate-400 font-medium">Progress</span>
                   <span className="text-xs font-semibold text-slate-700">{project.progress}%</span>
                 </div>
-                <ProgressBar value={project.progress} size="sm" />
+                <ProgressBar value={project.progress} size="sm" showLabel={false} />
               </div>
 
               {/* Schedule */}
@@ -200,9 +206,8 @@ export default function ClientProjectsPage() {
                 </span>
               </div>
 
-              {/* Priority + Arrow */}
-              <div className="flex items-center justify-between pt-3 border-t border-slate-100">
-                <StatusBadge status={project.priority} size="sm" />
+              {/* Arrow */}
+              <div className="flex items-center justify-end pt-3 border-t border-slate-100">
                 <ArrowRight className="h-4 w-4 text-slate-300 transition-all group-hover:text-brand group-hover:translate-x-0.5" />
               </div>
             </Link>

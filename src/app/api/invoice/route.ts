@@ -8,6 +8,26 @@ import { addClientDocumentToDb } from "@/lib/server/client-documents-repository"
 import { getTodayInManila } from "@/lib/date-utils";
 import { requireAdmin } from "@/lib/server/auth-guard";
 import { executeWithIdempotency } from "@/lib/server/idempotency";
+import { getBookingByReferenceOrId } from "@/lib/server/client-bookings-repository";
+
+function mapBookingServiceType(serviceType?: string | null): string {
+  switch (serviceType) {
+    case "site_inspection":
+      return "Site Inspection";
+    case "solar_panel_installation":
+      return "Solar Panel Installation";
+    case "inverter_battery_setup":
+      return "Inverter & Battery Setup";
+    case "maintenance_repair":
+      return "Maintenance & Repair";
+    case "commissioning":
+      return "Commissioning";
+    case "cleaning":
+      return "Cleaning";
+    default:
+      return serviceType?.trim() || "Solar Panel Installation";
+  }
+}
 
 export async function GET() {
   const auth = await requireAdmin();
@@ -31,40 +51,64 @@ export async function POST(request: Request) {
       dueDate?: string;
       paymentInstructions?: string;
       clientUserId?: string;
+      bookingId?: string;
+      bookingRef?: string;
     };
 
-    const serviceType = body.serviceType?.trim() || "Solar Panel Installation";
-    const amount = typeof body.amount === "number" ? body.amount : 0;
+    const serviceTypeInput = body.serviceType?.trim();
+    const amountInput = typeof body.amount === "number" ? body.amount : undefined;
     const dueDate = body.dueDate?.trim() || getTodayInManila();
     const paymentInstructions = body.paymentInstructions?.trim() || "You may pay via Cash, GCash, Bank Transfer, or Credit Card.";
     const clientUserId = body.clientUserId?.trim() || null;
+    const bookingId = body.bookingId?.trim() || null;
+    const bookingRef = body.bookingRef?.trim() || null;
 
-    if (amount <= 0) {
+    const invoiceNo = await getNextInvoiceNumber();
+    let resolvedBookingRef = bookingRef ?? invoiceNo;
+    let resolvedClientUserId = clientUserId;
+    let resolvedServiceType = serviceTypeInput || "Solar Panel Installation";
+    let resolvedAmount = amountInput ?? 0;
+
+    if (bookingId || bookingRef) {
+      const booking = await getBookingByReferenceOrId(bookingId ?? bookingRef!);
+      if (booking) {
+        resolvedBookingRef = booking.referenceNo;
+        if (!resolvedClientUserId && booking.userId) {
+          resolvedClientUserId = booking.userId;
+        }
+        if (!serviceTypeInput) {
+          resolvedServiceType = mapBookingServiceType(booking.serviceType);
+        }
+        if (amountInput == null && booking.amount > 0) {
+          resolvedAmount = booking.amount;
+        }
+      }
+    }
+
+    if (resolvedAmount <= 0) {
       return NextResponse.json(
         { error: "Amount must be greater than 0." },
         { status: 400 }
       );
     }
 
-    const invoiceNo = await getNextInvoiceNumber();
-
     const payment = await createPaymentInDb({
       referenceNo: invoiceNo,
-      bookingRef: invoiceNo,
-      description: `${serviceType} - Invoice ${invoiceNo}`,
-      amount,
+      bookingRef: resolvedBookingRef,
+      description: `${resolvedServiceType} - Invoice ${invoiceNo}`,
+      amount: resolvedAmount,
       method: "bank_transfer",
       dueDate,
-      userId: clientUserId,
-      serviceType,
+      userId: resolvedClientUserId,
+      serviceType: resolvedServiceType,
       paymentInstructions,
     });
 
-    if (clientUserId) {
+    if (resolvedClientUserId) {
       const today = getTodayInManila();
       await addClientDocumentToDb(
         {
-          title: `Invoice ${invoiceNo} - ${serviceType}`,
+          title: `Invoice ${invoiceNo} - ${resolvedServiceType}`,
           type: "invoice",
           fileSize: "—",
           uploadedAt: today,
@@ -72,7 +116,7 @@ export async function POST(request: Request) {
           status: "active",
           approvalStatus: "pending",
         },
-        clientUserId
+        resolvedClientUserId
       );
     }
 

@@ -26,13 +26,12 @@ import {
   validateUploadFileSize,
 } from "@/lib/upload-constraints";
 import type { Project, Report, Technician } from "@/types";
-import type { DocumentType } from "@/types/client";
 import { downloadQuotationReportPdf } from "@/lib/pdf/quotation-report-pdf";
+import { canCreateReport } from "./report-creation-utils";
 
-const createReportTypes: { value: DocumentType; label: string }[] = [
-  { value: "warranty", label: "Warranty" },
-  { value: "permit", label: "Permits" },
-  { value: "contract", label: "Contracts" },
+const createReportTypes: { value: "service" | "quotation" | "revenue"; label: string }[] = [
+  { value: "service", label: "Service Report" },
+  { value: "revenue", label: "Revenue Report" },
 ];
 
 type ReportTab = "all" | "service" | "quotation" | "revenue";
@@ -149,7 +148,7 @@ export default function ReportsPage() {
 
   const [showCreateReport, setShowCreateReport] = useState(false);
   const [createTitle, setCreateTitle] = useState("");
-  const [createType, setCreateType] = useState<DocumentType>("warranty");
+  const [createType, setCreateType] = useState<"service" | "quotation" | "revenue">("service");
   const [createProject, setCreateProject] = useState("");
   const [createAttachment, setCreateAttachment] = useState<File | null>(null);
 
@@ -345,7 +344,7 @@ export default function ReportsPage() {
   };
 
   const handleCreateReportConfirm = async () => {
-    if (!createTitle.trim()) return;
+    if (!canCreate) return;
     const today = getTodayInManila();
     try {
       const response = await fetch("/api/reports", {
@@ -353,10 +352,10 @@ export default function ReportsPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           title: createTitle.trim(),
-          type: "service",
+          type: createType,
           submittedBy: "Admin",
           submittedAt: today,
-          amount: undefined,
+          amount: createType === "revenue" ? 0 : undefined,
           projectName: createProject || undefined,
           status: "pending",
           description: `${createType.toUpperCase()} report${createAttachment ? ` - ${createAttachment.name} (${formatFileSize(createAttachment.size)})` : ""}`,
@@ -590,12 +589,16 @@ export default function ReportsPage() {
   const openCreateReport = () => {
     setShowCreateReport(true);
     setCreateTitle("");
-    setCreateType("warranty");
+    setCreateType("service");
     setCreateProject(projects[0]?.name ?? "");
     setCreateAttachment(null);
   };
 
-  const canCreate = createTitle.trim() && createType && createAttachment;
+  const canCreate = canCreateReport({
+    title: createTitle,
+    type: createType,
+    attachment: createAttachment,
+  });
 
   return (
     <div className="space-y-6">
@@ -682,20 +685,20 @@ export default function ReportsPage() {
         </div>
       </div>
 
-      {/* Report Tabs */}
-      <div className="flex gap-2 border-b border-slate-200 pb-0">
+      {/* Summary Chips */}
+      <div className="flex flex-wrap gap-2">
         {(["all", "service", "quotation", "revenue"] as const).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
-            className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-[1px] ${
+            className={`rounded-full px-3.5 py-1.5 text-xs font-medium border transition-all ${
               tab === t
-                ? "border-brand text-brand"
-                : "border-transparent text-slate-500 hover:text-slate-700"
+                ? "bg-brand text-white border-brand"
+                : "bg-white text-slate-600 border-slate-200 hover:border-slate-300"
             }`}
           >
-            {t === "all" ? "All Reports" : typeLabels[t]}
-            <span className="ml-1.5 text-xs opacity-60">({typeCounts[t]})</span>
+            {t === "all" ? "All Reports" : typeLabels[t]}{" "}
+            <span className="opacity-60">({typeCounts[t]})</span>
           </button>
         ))}
       </div>
@@ -1188,7 +1191,7 @@ export default function ReportsPage() {
             </label>
             <select
               value={createType}
-              onChange={(e) => setCreateType(e.target.value as DocumentType)}
+              onChange={(e) => setCreateType(e.target.value as "service" | "quotation" | "revenue")}
               className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand"
             >
               {createReportTypes.map((t) => (

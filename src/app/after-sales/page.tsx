@@ -146,12 +146,17 @@ export default function AfterSalesPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="text-xl font-bold text-slate-900">After Sales</h1>
-        <p className="text-sm text-slate-500 mt-0.5">
-          1-year workmanship warranty monitoring — {warrantyProjects.length} completed project
-          {warrantyProjects.length !== 1 ? "s" : ""} in warranty window
-        </p>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h1 className="text-xl font-bold text-slate-900">After Sales</h1>
+          <p className="text-sm text-slate-500 mt-0.5">
+            1-year workmanship warranty monitoring — {warrantyProjects.length} completed project
+            {warrantyProjects.length !== 1 ? "s" : ""} in warranty window
+          </p>
+        </div>
+        <Button type="button" onClick={() => setShowAddTicket(true)}>
+          <Plus className="mr-2 h-4 w-4" /> Add Ticket
+        </Button>
       </div>
 
       {/* Summary Cards */}
@@ -202,10 +207,121 @@ export default function AfterSalesPage() {
         </div>
       </div>
 
-      {/* Client Tickets Card */}
-      <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
-        <div className="border-b border-slate-100 bg-slate-50/50 px-5 py-4 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
+      <div className="flex flex-col lg:flex-row gap-6 items-start">
+        {/* Projects Table */}
+        <div className="flex-1 min-w-0 w-full rounded-xl border border-slate-200 bg-white overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[950px]">
+              <thead>
+                <tr className="border-b border-slate-100 bg-slate-50/50">
+                  <th className="px-5 py-3 text-left text-xs font-medium text-slate-500 w-24">
+                    ID
+                  </th>
+                  <th className="px-5 py-3 text-left text-xs font-medium text-slate-500">
+                    Project
+                  </th>
+                  <th className="px-5 py-3 text-left text-xs font-medium text-slate-500 hidden md:table-cell">
+                    Client
+                  </th>
+                  <th className="px-5 py-3 text-left text-xs font-medium text-slate-500 hidden lg:table-cell">
+                    Location
+                  </th>
+                  <th className="px-5 py-3 text-left text-xs font-medium text-slate-500">
+                    Completion
+                  </th>
+                  <th className="px-5 py-3 text-left text-xs font-medium text-slate-500">
+                    Warranty Ends
+                  </th>
+                  <th className="px-5 py-3 text-left text-xs font-medium text-slate-500">
+                    Status
+                  </th>
+                  <th className="px-5 py-3 text-right text-xs font-medium text-slate-500">
+                    Actions
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {warrantyProjects.length === 0 ? (
+                  <tr>
+                    <td colSpan={8} className="py-12 text-center text-sm text-slate-500">
+                      No completed projects in the warranty window yet. Projects completed within the
+                      last 12 months will appear here.
+                    </td>
+                  </tr>
+                ) : (
+                  warrantyProjects.map((project) => (
+                    <tr
+                      key={project.id}
+                      className="hover:bg-slate-50 transition-colors"
+                    >
+                      <td className="px-5 py-3.5 whitespace-nowrap">
+                        <span className="inline-flex items-center rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-mono font-bold text-slate-700 border border-slate-200">
+                          {project.id.length > 8 ? project.id.slice(0, 8).toUpperCase() : project.id.toUpperCase()}
+                        </span>
+                      </td>
+                      <td className="px-5 py-3.5">
+                        <Link
+                          href={`/projects/${project.id}`}
+                          className="text-sm font-medium text-slate-900 hover:text-brand"
+                        >
+                          {project.name}
+                        </Link>
+                      </td>
+                      <td className="px-5 py-3.5 text-sm text-slate-600 hidden md:table-cell">
+                        {project.client}
+                      </td>
+                      <td className="px-5 py-3.5 text-sm text-slate-500 hidden lg:table-cell truncate max-w-[180px]">
+                        <span className="flex items-center gap-1">
+                          <MapPin className="h-3.5 w-3.5 shrink-0" />
+                          {project.location.split(",")[0]}
+                        </span>
+                      </td>
+                      <td className="px-5 py-3.5 text-sm text-slate-600">
+                        <span className="flex items-center gap-1">
+                          <Calendar className="h-3.5 w-3.5 text-slate-400" />
+                          {formatDate(project.endDate)}
+                        </span>
+                      </td>
+                      <td className="px-5 py-3.5 text-sm text-slate-600">
+                        {formatDate(project.warrantyEnd)}
+                      </td>
+                      <td className="px-5 py-3.5">
+                        <div className="flex items-center gap-2">
+                          <WarrantyStatusBadge status={project.status} />
+                          {project.status !== "expired" && (
+                            <span className="text-xs text-slate-500">
+                              {project.daysRemaining} days left
+                            </span>
+                          )}
+                          {project.status === "expired" && (
+                            <span className="text-xs text-slate-500">
+                              {Math.abs(project.daysRemaining)} days ago
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-5 py-3.5">
+                        <div className="flex justify-end">
+                          <Link
+                            href={`/projects/${project.id}`}
+                            className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-brand transition-colors"
+                            title="View project"
+                          >
+                            <ExternalLink className="h-4 w-4" />
+                          </Link>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Client Tickets Card */}
+        <div className="w-full lg:w-[400px] xl:w-[450px] shrink-0 rounded-xl border border-slate-200 bg-white overflow-hidden">
+          <div className="border-b border-slate-100 bg-slate-50/50 px-5 py-4 flex items-center gap-3">
             <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-amber-50">
               <Ticket className="h-5 w-5 text-amber-600" />
             </div>
@@ -214,172 +330,67 @@ export default function AfterSalesPage() {
               <p className="text-xs text-slate-500">Open, in progress, and resolved support requests</p>
             </div>
           </div>
-          <Button type="button" onClick={() => setShowAddTicket(true)}>
-            Add Ticket
-          </Button>
-        </div>
 
-        <div className="p-4 sm:p-5">
-          {tickets.length === 0 ? (
-            <div className="py-12 text-center text-sm text-slate-500">
-              No tickets yet.
-            </div>
-          ) : (
-            <div className="grid gap-3">
-              {tickets.map((ticket) => (
-                <div
-                  key={ticket.id}
-                  className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"
-                >
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                    <div className="min-w-0 space-y-2">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <h3 className="text-sm font-semibold text-slate-900">{ticket.subject}</h3>
-                        <TicketStatusBadge status={ticket.status} />
-                      </div>
-                      <p className="text-xs text-slate-500">
-                        {ticket.clientName} · {ticket.clientEmail}
-                      </p>
-                      {ticket.projectName && (
+          <div className="p-4 sm:p-5">
+            {tickets.length === 0 ? (
+              <div className="py-12 text-center text-sm text-slate-500">
+                No tickets yet.
+              </div>
+            ) : (
+              <div className="grid gap-3">
+                {tickets.map((ticket) => (
+                  <div
+                    key={ticket.id}
+                    className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"
+                  >
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                      <div className="min-w-0 space-y-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h3 className="text-sm font-semibold text-slate-900">{ticket.subject}</h3>
+                          <TicketStatusBadge status={ticket.status} />
+                        </div>
                         <p className="text-xs text-slate-500">
-                          Project: {ticket.projectName}
+                          {ticket.clientName} · {ticket.clientEmail}
                         </p>
-                      )}
-                      <p className="text-sm leading-relaxed text-slate-600">
-                        {ticket.description}
-                      </p>
-                      <p className="text-[11px] text-slate-400">
-                        {formatDate(ticket.createdAt.slice(0, 10))}
-                      </p>
-                    </div>
+                        {ticket.projectName && (
+                          <p className="text-xs text-slate-500">
+                            Project: {ticket.projectName}
+                          </p>
+                        )}
+                        <p className="text-sm leading-relaxed text-slate-600">
+                          {ticket.description}
+                        </p>
+                        <p className="text-[11px] text-slate-400">
+                          {formatDate(ticket.createdAt.slice(0, 10))}
+                        </p>
+                      </div>
 
-                    <div className="flex shrink-0 items-center gap-2 sm:justify-end">
-                      {ticket.projectId && (
-                        <Link
-                          href={`/projects/${ticket.projectId}`}
-                          className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-brand transition-colors"
-                          title="View project"
+                      <div className="flex shrink-0 items-center gap-2 sm:justify-end">
+                        {ticket.projectId && (
+                          <Link
+                            href={`/projects/${ticket.projectId}`}
+                            className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-brand transition-colors"
+                            title="View project"
+                          >
+                            <ExternalLink className="h-4 w-4" />
+                          </Link>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => setDeleteTarget(ticket)}
+                          className="flex h-8 w-8 items-center justify-center rounded-lg text-red-500 hover:bg-red-50 transition-colors"
+                          title="Delete ticket"
                         >
-                          <ExternalLink className="h-4 w-4" />
-                        </Link>
-                      )}
-                      <button
-                        type="button"
-                        onClick={() => setDeleteTarget(ticket)}
-                        className="flex h-8 w-8 items-center justify-center rounded-lg text-red-500 hover:bg-red-50 transition-colors"
-                        title="Delete ticket"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Projects Table */}
-      <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[950px]">
-          <thead>
-            <tr className="border-b border-slate-100 bg-slate-50/50">
-              <th className="px-5 py-3 text-left text-xs font-medium text-slate-500">
-                Project
-              </th>
-              <th className="px-5 py-3 text-left text-xs font-medium text-slate-500 hidden md:table-cell">
-                Client
-              </th>
-              <th className="px-5 py-3 text-left text-xs font-medium text-slate-500 hidden lg:table-cell">
-                Location
-              </th>
-              <th className="px-5 py-3 text-left text-xs font-medium text-slate-500">
-                Completion
-              </th>
-              <th className="px-5 py-3 text-left text-xs font-medium text-slate-500">
-                Warranty Ends
-              </th>
-              <th className="px-5 py-3 text-left text-xs font-medium text-slate-500">
-                Status
-              </th>
-              <th className="px-5 py-3 text-right text-xs font-medium text-slate-500">
-                Actions
-              </th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {warrantyProjects.length === 0 ? (
-              <tr>
-                <td colSpan={7} className="py-12 text-center text-sm text-slate-500">
-                  No completed projects in the warranty window yet. Projects completed within the
-                  last 12 months will appear here.
-                </td>
-              </tr>
-            ) : (
-              warrantyProjects.map((project) => (
-                <tr
-                  key={project.id}
-                  className="hover:bg-slate-50 transition-colors"
-                >
-                  <td className="px-5 py-3.5">
-                    <Link
-                      href={`/projects/${project.id}`}
-                      className="text-sm font-medium text-slate-900 hover:text-brand"
-                    >
-                      {project.name}
-                    </Link>
-                  </td>
-                  <td className="px-5 py-3.5 text-sm text-slate-600 hidden md:table-cell">
-                    {project.client}
-                  </td>
-                  <td className="px-5 py-3.5 text-sm text-slate-500 hidden lg:table-cell truncate max-w-[180px]">
-                    <span className="flex items-center gap-1">
-                      <MapPin className="h-3.5 w-3.5 shrink-0" />
-                      {project.location.split(",")[0]}
-                    </span>
-                  </td>
-                  <td className="px-5 py-3.5 text-sm text-slate-600">
-                    <span className="flex items-center gap-1">
-                      <Calendar className="h-3.5 w-3.5 text-slate-400" />
-                      {formatDate(project.endDate)}
-                    </span>
-                  </td>
-                  <td className="px-5 py-3.5 text-sm text-slate-600">
-                    {formatDate(project.warrantyEnd)}
-                  </td>
-                  <td className="px-5 py-3.5">
-                    <div className="flex items-center gap-2">
-                      <WarrantyStatusBadge status={project.status} />
-                      {project.status !== "expired" && (
-                        <span className="text-xs text-slate-500">
-                          {project.daysRemaining} days left
-                        </span>
-                      )}
-                      {project.status === "expired" && (
-                        <span className="text-xs text-slate-500">
-                          {Math.abs(project.daysRemaining)} days ago
-                        </span>
-                      )}
-                    </div>
-                  </td>
-                  <td className="px-5 py-3.5">
-                    <div className="flex justify-end">
-                      <Link
-                        href={`/projects/${project.id}`}
-                        className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-brand transition-colors"
-                        title="View project"
-                      >
-                        <ExternalLink className="h-4 w-4" />
-                      </Link>
-                    </div>
-                  </td>
-                </tr>
-              ))
+                ))}
+              </div>
             )}
-          </tbody>
-        </table>
+          </div>
+        </div>
       </div>
 
       {/* Delete ticket confirmation */}

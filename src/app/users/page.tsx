@@ -84,54 +84,47 @@ export default function UsersPage() {
         </Button>
       </div>
 
-      {/* Role Summary Cards */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      {/* Summary Chips */}
+      <div className="flex flex-wrap gap-2">
+        <button
+          onClick={() => setRoleFilter("all")}
+          className={`rounded-full px-3.5 py-1.5 text-xs font-medium border transition-all ${
+            roleFilter === "all"
+              ? "bg-brand text-white border-brand"
+              : "bg-white text-slate-600 border-slate-200 hover:border-slate-300"
+          }`}
+        >
+          All Users <span className="opacity-60">({users.length})</span>
+        </button>
         {(["admin", "technician", "client"] as const).map((role) => {
           const count = users.filter((u) => u.role === role).length;
           return (
             <button
               key={role}
-              onClick={() => setRoleFilter(roleFilter === role ? "all" : role)}
-              className={`rounded-xl border p-4 text-left transition-all ${
+              onClick={() => setRoleFilter(role)}
+              className={`rounded-full px-3.5 py-1.5 text-xs font-medium border transition-all ${
                 roleFilter === role
-                  ? "border-brand bg-brand-50 ring-1 ring-brand/20"
-                  : "border-slate-200 bg-white hover:border-slate-300"
+                  ? "bg-brand text-white border-brand"
+                  : "bg-white text-slate-600 border-slate-200 hover:border-slate-300"
               }`}
             >
-              <div className="flex items-center gap-2">
-                {roleIcons[role]}
-                <span className="text-xs font-medium text-slate-500 capitalize">
-                  {roleLabels[role]}s
-                </span>
-              </div>
-              <p className="mt-1.5 text-xl font-bold text-slate-900">{count}</p>
+              <span className="capitalize">{roleLabels[role]}s</span>{" "}
+              <span className="opacity-60">({count})</span>
             </button>
           );
         })}
       </div>
 
-      {/* Filters + Search */}
-      <div className="flex items-center justify-between">
-        <div className="flex gap-2">
-          <button
-            onClick={() => setRoleFilter("all")}
-            className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
-              roleFilter === "all"
-                ? "bg-brand text-white"
-                : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-            }`}
-          >
-            All Users ({users.length})
-          </button>
-        </div>
-        <div className="relative">
+      {/* Filters Row */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
           <input
             type="text"
             placeholder="Search users..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="h-9 w-56 rounded-lg border border-slate-200 bg-white pl-9 pr-4 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand"
+            className="h-10 w-full rounded-xl border border-slate-200 bg-white pl-10 pr-4 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
           />
         </div>
       </div>

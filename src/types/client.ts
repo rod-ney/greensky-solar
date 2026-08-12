@@ -8,7 +8,7 @@ export type ServiceType =
   | "maintenance_repair"
   | "commissioning"
   | "cleaning";
-export type PaymentStatus = "paid" | "pending" | "overdue" | "refunded";
+export type PaymentStatus = "paid" | "pending" | "overdue" | "refunded" | "cancelled";
 export type PaymentMethod = "gcash" | "bank_transfer" | "credit_card" | "cash";
 export type DocumentType = "contract" | "invoice" | "warranty" | "permit" | "report";
 

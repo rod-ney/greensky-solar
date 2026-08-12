@@ -40,7 +40,7 @@ import {
   isoDateLocalMidnightMs,
 } from "@/lib/date-utils";
 import { toast } from "@/lib/toast";
-import type { Task, TaskStatus, Priority, ProjectStatus, Project, Technician, InventoryItem, ProjectInventoryItem } from "@/types";
+import type { Task, TaskStatus, Priority, ProjectStatus, Project, Technician, InventoryItem, ProjectInventoryItem, Report } from "@/types";
 
 const TASK_STATUS_OPTIONS: { value: TaskStatus; label: string }[] = [
   { value: "todo", label: "To Do" },
@@ -120,12 +120,13 @@ export default function ProjectDetailPage() {
   useEffect(() => {
     const load = async () => {
       try {
-        const [projectRes, techsRes, usersRes, inventoryRes, projInvRes] = await Promise.all([
+        const [projectRes, techsRes, usersRes, inventoryRes, projInvRes, reportsRes] = await Promise.all([
           fetch(`/api/projects/${params.id as string}`, { cache: "no-store" }),
           fetch("/api/technicians", { cache: "no-store" }),
           fetch("/api/users", { cache: "no-store" }),
           fetch("/api/inventory", { cache: "no-store" }),
           fetch(`/api/projects/${params.id as string}/inventory`, { cache: "no-store" }),
+          fetch("/api/reports", { cache: "no-store" }),
         ]);
         const loadedProject = projectRes.ok ? ((await projectRes.json()) as Project) : null;
         setProject(loadedProject);
@@ -151,6 +152,37 @@ export default function ProjectDetailPage() {
         setClientUsers(users.filter((u) => u.role === "client").map((u) => ({ id: u.id, name: u.name, email: u.email })));
         setAvailableInventory(inventoryRes.ok ? ((await inventoryRes.json()) as InventoryItem[]) : []);
         setProjectInventory(projInvRes.ok ? ((await projInvRes.json()) as ProjectInventoryItem[]) : []);
+        
+        const reports = reportsRes.ok ? ((await reportsRes.json()) as Report[]) : [];
+        const projectQuotations = reports.filter(
+          (r) =>
+            (r.projectId === params.id || (r.projectName && loadedProject && r.projectName.toLowerCase() === loadedProject.name.toLowerCase())) &&
+            r.type === "quotation"
+        );
+        const approvedQuotation = projectQuotations.find(r => r.status === "approved" && r.clientApprovalStatus === "approved")
+          || projectQuotations.find(r => r.status === "approved")
+          || projectQuotations[0];
+        if (approvedQuotation) {
+          try {
+            const q = JSON.parse(approvedQuotation.description);
+            const materialItems =
+              Array.isArray(q.materialItems) && q.materialItems.length > 0
+                ? q.materialItems
+                : (q.materials ?? "")
+                    .split("\n")
+                    .map((entry: string) => entry.trim())
+                    .filter(Boolean)
+                    .map((entry: string) => ({
+                      description: entry,
+                      qty: 1,
+                    }));
+            setProjectQuotationsMaterials(materialItems);
+          } catch {
+            setProjectQuotationsMaterials([]);
+          }
+        } else {
+          setProjectQuotationsMaterials([]);
+        }
       } catch {
         setProject(null);
         setTasks([]);
@@ -218,6 +250,7 @@ export default function ProjectDetailPage() {
   const [showEditProjectConfirm, setShowEditProjectConfirm] = useState(false);
   const [showEditTaskConfirm, setShowEditTaskConfirm] = useState(false);
   const [showWarrantyConfirm, setShowWarrantyConfirm] = useState(false);
+  const [projectQuotationsMaterials, setProjectQuotationsMaterials] = useState<any[]>([]);
 
   // ---- Derived values ----
   const filteredTasks = useMemo(
@@ -821,7 +854,8 @@ export default function ProjectDetailPage() {
         <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
           <div className="flex-1">
             <div className="flex items-center gap-3">
-              <h1 className="text-xl font-bold text-slate-900">
+              <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2">
+                <span className="text-slate-400 font-mono text-lg">{project.id.slice(0, 8).toUpperCase()}</span>
                 {projectData?.name ?? project.name}
               </h1>
               <StatusBadge
@@ -988,15 +1022,15 @@ export default function ProjectDetailPage() {
         </div>
 
         {/* Task Filters */}
-        <div className="flex gap-2 border-b border-slate-100 px-5 py-3 overflow-x-auto">
+        <div className="flex flex-wrap gap-2 border-b border-slate-100 px-5 py-4 overflow-x-auto">
           {(["all", "todo", "in_progress", "completed", "cancelled"] as const).map((status) => (
             <button
               key={status}
               onClick={() => setTaskFilter(status)}
-              className={`whitespace-nowrap rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+              className={`whitespace-nowrap rounded-full px-3.5 py-1.5 text-xs font-medium border transition-all ${
                 taskFilter === status
-                  ? "bg-brand text-white"
-                  : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                  ? "bg-brand text-white border-brand"
+                  : "bg-white text-slate-600 border-slate-200 hover:border-slate-300"
               }`}
             >
               {status === "all"
@@ -1004,7 +1038,7 @@ export default function ProjectDetailPage() {
                 : status === "in_progress"
                 ? "In Progress"
                 : status.charAt(0).toUpperCase() + status.slice(1)}{" "}
-              ({taskCounts[status]})
+              <span className="opacity-60">({taskCounts[status]})</span>
             </button>
           ))}
         </div>
@@ -1703,6 +1737,21 @@ export default function ProjectDetailPage() {
         }}
         title="Allocate Inventory to Project"
       >
+          <div className="mb-6 rounded-xl border border-slate-200 bg-slate-50 p-4">
+            <h4 className="text-sm font-semibold text-slate-900 mb-2">Approved Quotation Materials</h4>
+            {projectQuotationsMaterials.length > 0 ? (
+              <div className="max-h-40 overflow-y-auto space-y-1.5 pr-2">
+                {projectQuotationsMaterials.map((mat, i) => (
+                  <div key={i} className="flex justify-between items-center text-xs bg-white p-2 rounded-lg border border-slate-200 shadow-sm">
+                    <span className="text-slate-700 font-medium truncate pr-3">{mat.description}</span>
+                    <span className="text-slate-500 font-mono whitespace-nowrap">Qty: {mat.qty}</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-slate-500">No approved quotation materials found for this project.</p>
+            )}
+          </div>
         <form
           className="space-y-4"
           onSubmit={(e) => {

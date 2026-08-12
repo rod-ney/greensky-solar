@@ -154,10 +154,10 @@ export default function NotificationsPageContent({
               <button
                 key={category}
                 onClick={() => setFilter(category)}
-                className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
+                className={`rounded-full px-3.5 py-1.5 text-xs font-medium border transition-all ${
                   filter === category
-                    ? "bg-brand text-white"
-                    : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                    ? "bg-brand text-white border-brand"
+                    : "bg-white text-slate-600 border-slate-200 hover:border-slate-300"
                 }`}
               >
                 {CATEGORY_LABELS[category]}

@@ -216,8 +216,11 @@ export default function TechnicianProjectDetailPage() {
         <div className="rounded-xl border border-slate-200 bg-white p-5 lg:col-span-2">
           <div className="flex items-start justify-between gap-4">
             <div className="min-w-0">
-              <h1 className="text-lg font-bold text-slate-900 truncate">{project.name}</h1>
-              <p className="mt-1 text-sm text-slate-500">{project.client}</p>
+                <h1 className="text-lg font-bold text-slate-900 truncate flex items-center gap-2">
+                  <span className="text-slate-400 font-mono text-base shrink-0">{project.id.slice(0, 8).toUpperCase()}</span>
+                  <span className="truncate">{project.name}</span>
+                </h1>
+              <p className="mt-0.5 text-sm text-slate-500">{project.client}</p>
             </div>
             <StatusBadge status={project.status} />
           </div>

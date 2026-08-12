@@ -359,11 +359,10 @@ export default function BookingPage() {
               <button
                 key={s}
                 onClick={() => setStatusFilter(s)}
-                className={`rounded-full px-3.5 py-1.5 text-xs font-medium border transition-all ${
-                  statusFilter === s
+                className={`rounded-full px-3.5 py-1.5 text-xs font-medium border transition-all ${statusFilter === s
                     ? "bg-brand text-white border-brand"
                     : "bg-white text-slate-600 border-slate-200 hover:border-slate-300"
-                }`}
+                  }`}
               >
                 {s === "all" ? "All" : BOOKING_STATUS_LABELS[s as BookingStatus]}{" "}
                 <span className="opacity-60">({count})</span>

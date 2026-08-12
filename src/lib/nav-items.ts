@@ -11,6 +11,7 @@ import {
   Receipt,
   Bell,
   ListChecks,
+  Banknote,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -77,6 +78,13 @@ export const navItems: NavItem[] = [
     description: "Review stock levels and item availability.",
     href: "/inventory",
     icon: Package,
+    category: "Operations",
+  },
+  {
+    label: "Payments",
+    description: "Manage client payments and requests.",
+    href: "/payments",
+    icon: Banknote,
     category: "Operations",
   },
   {

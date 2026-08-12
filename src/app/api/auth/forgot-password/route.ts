@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getAuthUserByEmailFromDb } from "@/lib/server/general-repository";
 import { createPasswordResetToken } from "@/lib/server/password-reset";
+import { sendPasswordResetEmail } from "@/lib/server/email";
 import { forgotPasswordSchema } from "@/lib/validations";
 import { validateBody } from "@/lib/validations/validate";
 import { checkRateLimit } from "@/lib/rate-limit";
@@ -43,7 +44,15 @@ export async function POST(request: Request) {
       if (process.env.NODE_ENV === "development") {
         console.log("[DEV] Password reset link:", resetLink);
       }
-      // TODO Phase 5: Send email via Resend/Nodemailer when configured
+
+      try {
+        await sendPasswordResetEmail({
+          to: email,
+          resetLink,
+        });
+      } catch (error) {
+        console.error("Failed to send password reset email", error);
+      }
     }
 
     return NextResponse.json({

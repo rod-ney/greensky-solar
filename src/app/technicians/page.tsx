@@ -113,36 +113,38 @@ export default function TechniciansPage() {
         </Button>
       </div>
 
-      {/* Filters */}
+      {/* Summary Chips */}
+      <div className="flex flex-wrap gap-2">
+        {(["all", "available", "busy", "on_leave"] as const).map((status) => (
+          <button
+            key={status}
+            onClick={() => setFilter(status)}
+            className={`rounded-full px-3.5 py-1.5 text-xs font-medium border transition-all ${
+              filter === status
+                ? "bg-brand text-white border-brand"
+                : "bg-white text-slate-600 border-slate-200 hover:border-slate-300"
+            }`}
+          >
+            {status === "all"
+              ? "All"
+              : status === "on_leave"
+              ? "On Leave"
+              : status.charAt(0).toUpperCase() + status.slice(1)}{" "}
+            <span className="opacity-60">({statusCounts[status]})</span>
+          </button>
+        ))}
+      </div>
+
+      {/* Filters Row */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex flex-wrap gap-2">
-          {(["all", "available", "busy", "on_leave"] as const).map((status) => (
-            <button
-              key={status}
-              onClick={() => setFilter(status)}
-              className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
-                filter === status
-                  ? "bg-brand text-white"
-                  : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-              }`}
-            >
-              {status === "all"
-                ? "All"
-                : status === "on_leave"
-                ? "On Leave"
-                : status.charAt(0).toUpperCase() + status.slice(1)}{" "}
-              <span className="ml-1 opacity-75">{statusCounts[status]}</span>
-            </button>
-          ))}
-        </div>
-        <div className="relative">
+        <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
           <input
             type="text"
             placeholder="Search technicians..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="h-9 w-56 rounded-lg border border-slate-200 bg-white pl-9 pr-4 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand"
+            className="h-10 w-full rounded-xl border border-slate-200 bg-white pl-10 pr-4 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
           />
         </div>
       </div>

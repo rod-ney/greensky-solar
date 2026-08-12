@@ -8,6 +8,7 @@ import {
   CheckCircle2,
   AlertTriangle,
   RotateCcw,
+  XCircle,
   Download,
   X,
 } from "lucide-react";
@@ -19,6 +20,7 @@ const statusConfig: Record<PaymentStatus, { bg: string; text: string; icon: Reac
   pending: { bg: "bg-amber-50 border-amber-200", text: "text-amber-700", icon: <Clock className="h-3.5 w-3.5" />, label: "Pending" },
   overdue: { bg: "bg-red-50 border-red-200", text: "text-red-700", icon: <AlertTriangle className="h-3.5 w-3.5" />, label: "Overdue" },
   refunded: { bg: "bg-slate-50 border-slate-200", text: "text-slate-600", icon: <RotateCcw className="h-3.5 w-3.5" />, label: "Refunded" },
+  cancelled: { bg: "bg-red-50 border-red-200", text: "text-red-700", icon: <XCircle className="h-3.5 w-3.5" />, label: "Cancelled" },
 };
 
 export default function PaymentsPage() {
@@ -114,7 +116,7 @@ export default function PaymentsPage() {
       {/* Filters */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex flex-wrap gap-2">
-          {(["all", "paid", "pending", "overdue", "refunded"] as const).map((s) => {
+          {(["all", "paid", "pending", "overdue", "refunded", "cancelled"] as const).map((s) => {
             const count = s === "all" ? payments.length : payments.filter((p) => p.status === s).length;
             return (
               <button

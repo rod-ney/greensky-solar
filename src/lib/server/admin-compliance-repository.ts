@@ -9,6 +9,7 @@ type ComplianceRow = {
   item_id: string;
   project_id: string;
   project_name: string;
+  project_location: string | null;
   user_id: string;
   client_name: string;
   client_email: string;
@@ -28,6 +29,7 @@ function mapRow(r: ComplianceRow): AdminComplianceTrackerItem {
     id: r.item_id,
     projectId: r.project_id,
     projectName: r.project_name,
+    location: r.project_location ?? undefined,
     userId: r.user_id,
     clientName: r.client_name,
     clientEmail: r.client_email,
@@ -72,6 +74,7 @@ export async function listAdminComplianceTrackerItems(): Promise<AdminCompliance
         c.id AS item_id,
         c.project_id,
         p.name AS project_name,
+        p.location AS project_location,
         p.user_id,
         u.name AS client_name,
         u.email AS client_email,

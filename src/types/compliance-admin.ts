@@ -4,6 +4,7 @@ export type AdminComplianceTrackerItem = {
   id: string;
   projectId: string;
   projectName: string;
+  location?: string;
   userId: string;
   clientName: string;
   clientEmail: string;

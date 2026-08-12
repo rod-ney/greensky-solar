@@ -2,6 +2,58 @@ import { dbQuery } from "@/lib/server/db";
 import { toIsoDateManila } from "@/lib/date-utils";
 import type { Booking } from "@/types/client";
 
+async function syncProjectFromBooking(bookingId: string): Promise<void> {
+  const projectResult = await dbQuery<{ id: string; status: string | null; project_lead: string | null }>(
+    `SELECT id, status, project_lead FROM projects WHERE booking_id = $1 ORDER BY created_at DESC LIMIT 1`,
+    [bookingId]
+  );
+  const project = projectResult.rows[0];
+  if (!project) return;
+
+  const bookingResult = await dbQuery<{ status: Booking["status"] }>(
+    `SELECT status FROM bookings WHERE id = $1 LIMIT 1`,
+    [bookingId]
+  );
+  const bookingStatus = bookingResult.rows[0]?.status;
+  if (!bookingStatus) return;
+
+  let nextProjectStatus: string | null = project.status;
+  if (bookingStatus === "cancelled") {
+    nextProjectStatus = "cancelled";
+  } else if (bookingStatus === "confirmed") {
+    nextProjectStatus = "ongoing";
+  } else if (bookingStatus === "completed") {
+    nextProjectStatus = "completed";
+  } else if (bookingStatus === "pending") {
+    nextProjectStatus = project.status === "completed" ? "completed" : "pending";
+  }
+
+  if (nextProjectStatus && nextProjectStatus !== project.status) {
+    await dbQuery(`UPDATE projects SET status = $2 WHERE id = $1`, [project.id, nextProjectStatus]);
+  }
+
+  if (bookingStatus === "confirmed" && !project.project_lead) {
+    const bookingTech = await dbQuery<{ technician: string }>(
+      `SELECT technician FROM bookings WHERE id = $1 LIMIT 1`,
+      [bookingId]
+    );
+    const technicianName = bookingTech.rows[0]?.technician;
+    if (technicianName) {
+      const technicianResult = await dbQuery<{ id: string }>(
+        `SELECT id FROM technicians WHERE name = $1 LIMIT 1`,
+        [technicianName]
+      );
+      const technicianId = technicianResult.rows[0]?.id;
+      if (technicianId) {
+        await dbQuery(
+          `UPDATE projects SET project_lead = $2 WHERE id = $1`,
+          [project.id, technicianId]
+        );
+      }
+    }
+  }
+}
+
 type BookingRow = {
   id: string;
   reference_no: string;
@@ -180,6 +232,44 @@ export async function getBookingStatusFromDb(
   return result.rows[0]?.status ?? null;
 }
 
+export async function getBookingByReferenceOrId(identifier: string): Promise<Booking | null> {
+  const result = await dbQuery<BookingRow>(
+    `SELECT b.id, b.reference_no, b.service_type, b.date, b.end_date, b.time, b.status, b.technician, b.address, b.notes, b.amount, b.user_id, b.lat, b.lng, b.address_id,
+            sa.monthly_bill AS addr_monthly_bill,
+            (
+              SELECT COALESCE(
+                json_agg(
+                  json_build_object(
+                    'id', a.id,
+                    'name', a.name,
+                    'quantity', a.quantity,
+                    'wattage', a.wattage
+                  ) ORDER BY a.name
+                ),
+                '[]'::json
+              )
+              FROM appliances a
+              WHERE b.address_id IS NOT NULL AND a.address_id = b.address_id
+            ) AS appliances_json,
+            COALESCE(
+              (SELECT u.name FROM users u WHERE u.id = b.user_id LIMIT 1),
+              (SELECT u2.name FROM projects p2 JOIN users u2 ON u2.id = p2.user_id WHERE p2.booking_id = b.id LIMIT 1)
+            ) AS client_name,
+            COALESCE(
+              (SELECT u.contact_number FROM users u WHERE u.id = b.user_id LIMIT 1),
+              (SELECT u2.contact_number FROM projects p2 JOIN users u2 ON u2.id = p2.user_id WHERE p2.booking_id = b.id LIMIT 1)
+            ) AS client_contact_number,
+            sa.lat AS addr_lat, sa.lng AS addr_lng
+     FROM bookings b
+     LEFT JOIN saved_addresses sa ON b.address_id = sa.id
+     WHERE b.id = $1 OR b.reference_no = $1
+     LIMIT 1`,
+    [identifier]
+  );
+  const row = result.rows[0];
+  return row ? mapBooking(row) : null;
+}
+
 export async function createClientBookingInDb(data: {
   serviceType: Booking["serviceType"];
   date: string;
@@ -316,6 +406,9 @@ export async function updateClientBookingInDb(
 
   const row = result.rows[0];
   if (!row) return null;
+  if (data.status) {
+    await syncProjectFromBooking(id);
+  }
   return mapBooking(row);
 }
 

@@ -615,6 +615,7 @@ export default function DocumentsPage() {
               })}
             </tbody>
           </table>
+          </div>
         </div>
       )}
 

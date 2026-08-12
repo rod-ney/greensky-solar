@@ -24,9 +24,11 @@ import {
   REPORT_ATTACHMENT_ALLOWED_TYPES,
   validateUploadFileSize,
 } from "@/lib/upload-constraints";
-import type { Project, Report, Technician } from "@/types";
+import type { InventoryItem, Project, Report, Technician } from "@/types";
 import type { Booking } from "@/types/client";
 import { downloadQuotationReportPdf } from "@/lib/pdf/quotation-report-pdf";
+import { getMaterialSelectOptions } from "./quotation-materials";
+import { buildQuotationTerms, calculateMaterialLineTotal, getQuotationMaterialValidationErrors } from "./quotation-form-utils";
 
 type TechReport = {
   id: string;
@@ -47,6 +49,7 @@ type QuotationData = {
   location?: string;
   clientNumber?: string;
   technician?: string;
+  descriptionOfWork?: string;
   adminComment?: string;
   clientComment?: string;
   materials: string;
@@ -58,6 +61,8 @@ type QuotationData = {
   }[];
   installationStartDate: string;
   installationEndDate: string;
+  dpPercent?: number;
+  terms?: string[];
 };
 
 type MaterialItem = {
@@ -153,17 +158,20 @@ export default function TechnicianReportsPage() {
   const [technicianOptions, setTechnicianOptions] = useState<Technician[]>([]);
   const [allReports, setAllReports] = useState<Report[]>([]);
   const [bookings, setBookings] = useState<Booking[]>([]);
+  const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([]);
+  const [inventoryLoadError, setInventoryLoadError] = useState<string | null>(null);
   const sessionUser = useSessionUser();
 
   useEffect(() => {
     const load = async () => {
       try {
-        const [projectsRes, techRes, reportsRes, bookingsRes, techListRes] = await Promise.all([
+        const [projectsRes, techRes, reportsRes, bookingsRes, techListRes, inventoryRes] = await Promise.all([
           fetch("/api/projects", { cache: "no-store" }),
           fetch("/api/profile/technician", { cache: "no-store" }),
           fetch("/api/reports", { cache: "no-store" }),
           fetch("/api/bookings", { cache: "no-store" }),
           fetch("/api/technicians", { cache: "no-store" }),
+          fetch("/api/technician/inventory", { cache: "no-store" }),
         ]);
         setProjects(projectsRes.ok ? (((await projectsRes.json()) as { items: Project[] }).items ?? []) : []);
         const techData = techRes.ok ? ((await techRes.json()) as Technician | null) : null;
@@ -171,12 +179,27 @@ export default function TechnicianReportsPage() {
         setTechnicianOptions(techListRes.ok ? ((await techListRes.json()) as Technician[]) : []);
         setAllReports(reportsRes.ok ? ((await reportsRes.json()) as Report[]) : []);
         setBookings(bookingsRes.ok ? ((await bookingsRes.json()) as Booking[]) : []);
+        if (inventoryRes.ok) {
+          const inventoryPayload = (await inventoryRes.json()) as InventoryItem[] | { items?: InventoryItem[] } | null;
+          const normalizedItems = Array.isArray(inventoryPayload)
+            ? inventoryPayload
+            : Array.isArray(inventoryPayload?.items)
+              ? inventoryPayload.items
+              : [];
+          setInventoryItems(normalizedItems);
+          setInventoryLoadError(null);
+        } else {
+          setInventoryItems([]);
+          setInventoryLoadError("Inventory list is unavailable right now.");
+        }
       } catch {
         setProjects([]);
         setTechProfile(null);
         setTechnicianOptions([]);
         setAllReports([]);
         setBookings([]);
+        setInventoryItems([]);
+        setInventoryLoadError("Inventory list is unavailable right now.");
       }
     };
     void load();
@@ -245,14 +268,23 @@ export default function TechnicianReportsPage() {
   const [quotClientNumber, setQuotClientNumber] = useState("");
   const [quotTechnicianIds, setQuotTechnicianIds] = useState<string[]>([]);
   const [showQuotTechniciansDropdown, setShowQuotTechniciansDropdown] = useState(false);
+  const [quotDescriptionOfWork, setQuotDescriptionOfWork] = useState("");
   const [quotMaterialItems, setQuotMaterialItems] = useState<MaterialItem[]>([
     { ...EMPTY_MATERIAL_ITEM },
   ]);
-  const [quotTotal, setQuotTotal] = useState("");
+  const [quotTotal, setQuotTotal] = useState("0.00");
   const [quotStartDate, setQuotStartDate] = useState("");
   const [quotEndDate, setQuotEndDate] = useState("");
   const [quotProject, setQuotProject] = useState("");
   const today = getTodayInManila();
+
+  useEffect(() => {
+    const sum = quotMaterialItems.reduce((acc, item) => {
+      const lineTotal = calculateMaterialLineTotal(item.qty, item.amt);
+      return acc + lineTotal;
+    }, 0);
+    setQuotTotal(sum > 0 ? sum.toFixed(2) : "0.00");
+  }, [quotMaterialItems]);
 
   const serializedMaterials = useMemo(
     () =>
@@ -260,18 +292,23 @@ export default function TechnicianReportsPage() {
         .filter((item) => item.description.trim())
         .map(
           (item) =>
-            `${item.description.trim()} | QTY: ${item.qty} | AMT: ${item.amt} | TOTAL: ${item.total}`
+            `${item.description.trim()} | QTY: ${item.qty} | AMT: ${item.amt} | TOTAL: ${calculateMaterialLineTotal(item.qty, item.amt)}`
         )
         .join("\n"),
+    [quotMaterialItems]
+  );
+
+  const quotationValidationErrors = useMemo(
+    () => getQuotationMaterialValidationErrors(quotMaterialItems),
     [quotMaterialItems]
   );
 
   const canCreateQuotation =
     quotClientName.trim() &&
     serializedMaterials.trim() &&
-    quotTotal &&
     quotStartDate &&
-    quotEndDate;
+    quotEndDate &&
+    quotationValidationErrors.length === 0;
 
   const resetQuotationForm = () => {
     setQuotBookingId("");
@@ -280,8 +317,9 @@ export default function TechnicianReportsPage() {
     setQuotClientNumber("");
     setQuotTechnicianIds(techProfile?.id ? [techProfile.id] : []);
     setShowQuotTechniciansDropdown(false);
+    setQuotDescriptionOfWork("");
     setQuotMaterialItems([{ ...EMPTY_MATERIAL_ITEM }]);
-    setQuotTotal("");
+    setQuotTotal("0.00");
     setQuotStartDate("");
     setQuotEndDate("");
     setQuotProject("");
@@ -304,11 +342,12 @@ export default function TechnicianReportsPage() {
             : []
       );
       setShowQuotTechniciansDropdown(false);
+      setQuotDescriptionOfWork(data.descriptionOfWork ?? "");
       const parsedItems = normalizeQuotationMaterialItems(data);
       setQuotMaterialItems(
         parsedItems.length > 0 ? parsedItems : [{ ...EMPTY_MATERIAL_ITEM }]
       );
-      setQuotTotal(report.amount?.toString() ?? "");
+      setQuotTotal(report.amount?.toString() ?? "0.00");
       setQuotStartDate(data.installationStartDate);
       setQuotEndDate(data.installationEndDate);
     } else {
@@ -318,10 +357,11 @@ export default function TechnicianReportsPage() {
       setQuotClientNumber("");
       setQuotTechnicianIds(techProfile?.id ? [techProfile.id] : []);
       setShowQuotTechniciansDropdown(false);
+      setQuotDescriptionOfWork("");
       setQuotMaterialItems([
         { ...EMPTY_MATERIAL_ITEM, description: report.description },
       ]);
-      setQuotTotal(report.amount?.toString() ?? "");
+      setQuotTotal(report.amount?.toString() ?? "0.00");
       setQuotStartDate("");
       setQuotEndDate("");
     }
@@ -353,10 +393,25 @@ export default function TechnicianReportsPage() {
       prev.map((item, itemIndex) => {
         if (itemIndex !== index) return item;
         if (key === "description") {
-          return { ...item, description: String(value) };
+          const selectedMaterial = inventoryItems.find(
+            (inventoryItem) => inventoryItem.name.trim() === String(value).trim()
+          );
+          const unitPrice = selectedMaterial?.unitPrice ? Number(selectedMaterial.unitPrice) : item.amt;
+          const nextQty = item.qty || 1;
+          return {
+            ...item,
+            description: String(value),
+            qty: nextQty,
+            amt: unitPrice,
+            total: calculateMaterialLineTotal(nextQty, unitPrice),
+          };
         }
         const numValue = Math.max(0, Number(value) || 0);
-        return { ...item, [key]: numValue };
+        const nextItem = { ...item, [key]: numValue };
+        if (key === "qty" || key === "amt") {
+          nextItem.total = calculateMaterialLineTotal(nextItem.qty, nextItem.amt);
+        }
+        return nextItem;
       })
     );
   };
@@ -386,6 +441,7 @@ export default function TechnicianReportsPage() {
         quotTechnicianIds,
         technicianOptions
       ).trim(),
+      descriptionOfWork: quotDescriptionOfWork.trim(),
       materials: serializedMaterials.trim(),
       materialItems: quotMaterialItems
         .filter((item) => item.description.trim())
@@ -393,7 +449,7 @@ export default function TechnicianReportsPage() {
           description: item.description.trim(),
           qty: item.qty,
           amt: item.amt,
-          total: item.total,
+          total: calculateMaterialLineTotal(item.qty, item.amt),
         })),
       installationStartDate: quotStartDate,
       installationEndDate: quotEndDate,
@@ -488,7 +544,7 @@ export default function TechnicianReportsPage() {
             title: createTitle.trim(),
             type: createType,
             status: "pending",
-              submittedBy: techProfile?.name ?? sessionUser.name,
+            submittedBy: techProfile?.name ?? sessionUser.name,
             submittedAt: getTodayInManila(),
             projectName: proj?.name ?? "",
             description: `${createDescription.trim()}${createAttachment ? ` [attachment:${createAttachment.name}]` : ""}`.trim(),
@@ -589,20 +645,18 @@ export default function TechnicianReportsPage() {
         }
       }
 
+      toast.success(
+        sendTarget === "client"
+          ? "Quotation sent to client."
+          : "Report sent to admin."
+      );
       setShowSendConfirm(false);
       setSelectedReport(null);
-      toast.success(
-        sendTarget === "admin"
-          ? "Report sent to admin."
-          : selectedReport.type === "quotation" && selectedQuotationData?.clientName
-          ? `Report sent to ${selectedQuotationData.clientName}.`
-          : "Report sent to client."
-      );
     };
     void run();
   };
 
-  const handleDelete = async () => {
+  const handleDeleteConfirm = async () => {
     if (!deleteTarget) return;
     try {
       const res = await fetch(`/api/reports/${deleteTarget.id}`, {
@@ -637,8 +691,8 @@ export default function TechnicianReportsPage() {
         location: qData.location,
         clientNumber: qData.clientNumber,
         technician: qData.technician || techProfile?.name || sessionUser.name,
+        descriptionOfWork: qData.descriptionOfWork,
         materialItems: normalizeQuotationMaterialItems(qData),
-        dpPercent: 50,
       });
     } catch {
       toast.error("Failed to generate quotation PDF.");
@@ -902,312 +956,374 @@ export default function TechnicianReportsPage() {
         </div>
       </Modal>
 
-      {/* Quotation Modal (Create / Edit) — plain document */}
+      {/* Quotation Modal (Create / Edit) — Modern Interactive Builder */}
       <Modal
         isOpen={showQuotation}
         onClose={() => {
           setShowQuotation(false);
           resetQuotationForm();
         }}
-        title={editingQuotation ? "Edit Quotation" : "Create Quotation"}
-        size="lg"
+        title={editingQuotation ? "Edit Quotation" : "Create Official Quotation"}
+        size="xl"
       >
-        <div className="space-y-4 pt-2">
-          <div className="mt-1 w-full rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
-            <header className="mb-6 border-b border-slate-200 pb-4">
-              <h2 className="text-xl font-semibold text-slate-900">Quotation</h2>
-              <p className="mt-1 text-sm text-slate-600">
-                Fill in the fields below. Dates and materials can be updated later if the client changes scope or schedule.
-              </p>
-            </header>
+        <div className="space-y-6 pt-1">
 
-            <div className="space-y-5 text-sm">
-                <div>
-                  <p className="font-medium text-slate-700">
-                    Date <span className="text-red-500">*</span>
+          {/* Step 1: Client & Timeline */}
+          <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-xs space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <h3 className="flex items-center gap-2 text-sm font-bold text-slate-900 uppercase tracking-wide">
+                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-brand/10 text-xs font-bold text-brand">1</span>
+                Client & Installation Schedule
+              </h3>
+              <span className="text-xs text-slate-400">* Required fields</span>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-700 mb-1.5">
+                  Select Completed Site Inspection Booking <span className="text-red-500">*</span>
+                </label>
+                <select
+                  value={quotBookingId}
+                  onChange={(e) => handleSelectQuotationBooking(e.target.value)}
+                  className="w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 outline-none transition-colors focus:border-brand focus:ring-2 focus:ring-brand/20 font-medium"
+                >
+                  <option value="">— Select completed site inspection booking —</option>
+                  {completedSiteInspectionBookings.map((booking) => {
+                    const clientLabel = booking.clientName?.trim() || "Unnamed client";
+                    return (
+                      <option key={booking.id} value={booking.id}>
+                        {booking.referenceNo} - {clientLabel} ({booking.address})
+                      </option>
+                    );
+                  })}
+                  {quotClientName && !quotBookingId &&
+                    !completedSiteInspectionBookings.some(
+                      (booking) =>
+                        (booking.clientName?.trim() || "Unnamed client") === quotClientName
+                    ) && <option value="">{quotClientName}</option>}
+                </select>
+                {completedSiteInspectionBookings.length === 0 && (
+                  <p className="mt-1 text-xs text-amber-600">
+                    No completed site inspection bookings available. You can manually enter details.
                   </p>
-                  <div className="mt-1.5 grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    <div>
-                      <label className="text-xs text-slate-500">Start</label>
-                      <input
-                        type="date"
-                        value={quotStartDate}
-                        onChange={(e) => setQuotStartDate(e.target.value)}
-                        min={today}
-                        className="mt-0.5 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-slate-900 outline-none focus:border-brand focus:ring-1 focus:ring-brand"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-xs text-slate-500">End</label>
-                      <input
-                        type="date"
-                        value={quotEndDate}
-                        onChange={(e) => setQuotEndDate(e.target.value)}
-                        min={quotStartDate || today}
-                        className="mt-0.5 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-slate-900 outline-none focus:border-brand focus:ring-1 focus:ring-brand"
-                      />
-                    </div>
+                )}
+              </div>
+
+              {/* Client Details Summary Card */}
+              {quotClientName && (
+                <div className="rounded-lg border border-slate-200/80 bg-slate-50/70 p-3.5 text-xs grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <span className="text-slate-400 block font-medium">Client Name</span>
+                    <span className="font-semibold text-slate-800 text-sm">{quotClientName}</span>
                   </div>
-                  <p className="mt-2 text-xs leading-relaxed text-slate-500">
-                    {quotStartDate && quotEndDate ? (
-                      <>
-                        <span className="text-slate-600">Period shown: </span>
-                        {formatDate(quotStartDate)}
-                        <span className="mx-1 text-slate-400">to</span>
-                        {formatDate(quotEndDate)}
-                        <span className="text-slate-500">
-                          {" "}
-                          — edit the fields above to change this range anytime before you save.
-                        </span>
-                      </>
-                    ) : (
-                      <>
-                        Choose a start and end date above. The line below will show the range; you can change dates here or when editing the quotation later.
-                      </>
-                    )}
-                  </p>
+                  <div>
+                    <span className="text-slate-400 block font-medium">Location</span>
+                    <span className="font-medium text-slate-700 truncate block">{quotLocation || "-"}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400 block font-medium">Contact Phone</span>
+                    <span className="font-medium text-slate-700">{quotClientNumber || "-"}</span>
+                  </div>
                 </div>
-                <div>
-                  <label className="block font-medium text-slate-700">
-                    Client <span className="text-red-500">*</span>
-                  </label>
-                  <select
-                    value={quotBookingId}
-                    onChange={(e) => handleSelectQuotationBooking(e.target.value)}
-                    className="mt-1.5 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-slate-900 outline-none focus:border-brand focus:ring-1 focus:ring-brand"
+              )}
+
+              {/* Dates */}
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-700 mb-1.5">
+                  Installation Date Range <span className="text-red-500">*</span>
+                </label>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div>
+                    <label className="text-[11px] font-medium text-slate-500">Start Date</label>
+                    <input
+                      type="date"
+                      value={quotStartDate}
+                      onChange={(e) => setQuotStartDate(e.target.value)}
+                      min={today}
+                      className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[11px] font-medium text-slate-500">End Date</label>
+                    <input
+                      type="date"
+                      value={quotEndDate}
+                      onChange={(e) => setQuotEndDate(e.target.value)}
+                      min={quotStartDate || today}
+                      className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
+                    />
+                  </div>
+                </div>
+                {quotStartDate && quotEndDate && (
+                  <p className="mt-2 text-xs text-slate-500 flex items-center gap-1.5">
+                    <span className="inline-block h-2 w-2 rounded-full bg-emerald-500" />
+                    <span>Selected Window: <strong>{formatDate(quotStartDate)}</strong> to <strong>{formatDate(quotEndDate)}</strong></span>
+                  </p>
+                )}
+              </div>
+
+              {/* Assigned Technicians */}
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-700 mb-1.5">
+                  Assigned Installation Team
+                </label>
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setShowQuotTechniciansDropdown((prev) => !prev)}
+                    className="flex min-h-[42px] w-full items-center justify-between rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none transition-colors hover:border-slate-300 focus:border-brand focus:ring-2 focus:ring-brand/20"
                   >
-                    <option value="">— Select completed site inspection booking —</option>
-                    {completedSiteInspectionBookings.map((booking) => {
-                      const clientLabel = booking.clientName?.trim() || "Unnamed client";
-                      return (
-                        <option key={booking.id} value={booking.id}>
-                          {booking.referenceNo} - {clientLabel}
-                        </option>
-                      );
-                    })}
-                    {quotClientName && !quotBookingId &&
-                      !completedSiteInspectionBookings.some(
-                        (booking) =>
-                          (booking.clientName?.trim() || "Unnamed client") === quotClientName
-                      ) && <option value="">{quotClientName}</option>}
-                  </select>
-                  <p className="mt-1.5 text-xs text-slate-500">
-                    Only completed site inspection bookings are available.
-                  </p>
-                </div>
-
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  <div>
-                    <label className="block font-medium text-slate-700">Location</label>
-                    <input
-                      type="text"
-                      value={quotLocation}
-                      readOnly
-                      disabled
-                      className="mt-1.5 w-full rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-slate-900 outline-none disabled:cursor-not-allowed disabled:opacity-80"
-                      placeholder="Client Location"
-                    />
-                  </div>
-                  <div>
-                    <label className="block font-medium text-slate-700">Number</label>
-                    <input
-                      type="text"
-                      value={quotClientNumber}
-                      readOnly
-                      disabled
-                      className="mt-1.5 w-full rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-slate-900 outline-none disabled:cursor-not-allowed disabled:opacity-80"
-                      placeholder="Client Contact Number"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block font-medium text-slate-700">Technicians</label>
-                  <div className="relative mt-1.5">
-                    <button
-                      type="button"
-                      onClick={() => setShowQuotTechniciansDropdown((prev) => !prev)}
-                      className="flex min-h-[42px] w-full items-center justify-between rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none transition-colors hover:border-slate-300 focus:border-brand focus:ring-1 focus:ring-brand"
-                    >
-                      {quotTechnicianIds.length > 0 ? (
-                        <span className="flex flex-wrap gap-1.5 pr-3">
-                          {quotTechnicianIds.map((techId) => {
-                            const label =
-                              technicianOptions.find((tech) => tech.id === techId)?.name ??
-                              techId;
-                            return (
-                              <span
-                                key={techId}
-                                className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800"
-                              >
-                                {label}
-                              </span>
-                            );
-                          })}
-                        </span>
-                      ) : (
-                        <span className="text-slate-400">Select technicians</span>
-                      )}
-                      <ChevronDown
-                        className={`h-4 w-4 shrink-0 text-slate-400 transition-transform ${
-                          showQuotTechniciansDropdown ? "rotate-180" : ""
-                        }`}
-                      />
-                    </button>
-                    {showQuotTechniciansDropdown && (
-                      <div className="absolute z-20 mt-1 w-full rounded-lg border border-slate-200 bg-white p-2 shadow-lg">
-                        <div className="grid grid-cols-1 gap-2">
-                          {technicianOptions.map((tech) => {
-                            const checked = quotTechnicianIds.includes(tech.id);
-                            return (
-                              <button
-                                key={tech.id}
-                                type="button"
-                                onClick={() =>
-                                  setQuotTechnicianIds((prev) =>
-                                    checked
-                                      ? prev.filter((id) => id !== tech.id)
-                                      : [...prev, tech.id]
-                                  )
-                                }
-                                className={`flex items-center justify-between rounded-lg border px-3 py-2 text-left text-sm transition-colors ${
-                                  checked
-                                    ? "border-brand bg-brand-50 text-brand"
-                                    : "border-slate-200 bg-white text-slate-700 hover:border-slate-300"
-                                }`}
-                              >
-                                <span className="font-medium">{tech.name}</span>
-                                <span
-                                  className={`inline-flex h-4 w-4 items-center justify-center rounded border text-[10px] font-bold ${
-                                    checked
-                                      ? "border-brand bg-brand text-white"
-                                      : "border-slate-300 text-transparent"
-                                  }`}
-                                >
-                                  ✓
-                                </span>
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
+                    {quotTechnicianIds.length > 0 ? (
+                      <span className="flex flex-wrap gap-1.5 pr-3">
+                        {quotTechnicianIds.map((techId) => {
+                          const label =
+                            technicianOptions.find((tech) => tech.id === techId)?.name ??
+                            techId;
+                          return (
+                            <span
+                              key={techId}
+                              className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-100 px-2.5 py-0.5 text-xs font-medium text-emerald-800"
+                            >
+                              {label}
+                            </span>
+                          );
+                        })}
+                      </span>
+                    ) : (
+                      <span className="text-slate-400">Select technicians for this job</span>
                     )}
-                  </div>
-
-                </div>
-                <div>
-                  <div className="flex items-center justify-between gap-3">
-                    <label className="block font-medium text-slate-700">
-                      Subject: Items / Materials for <span className="text-red-500">*</span>
-                    </label>
-                    <Button type="button" variant="outline" onClick={addMaterialItem}>
-                      Add Line
-                    </Button>
-                  </div>
-                  <div className="mt-1.5 space-y-2">
-                    <div className="grid grid-cols-12 gap-2 text-xs font-medium text-slate-500">
-                      <p className="col-span-5">Description</p>
-                      <p className="col-span-2">QUANTITY</p>
-                      <p className="col-span-2">AMOUNT</p>
-                      <p className="col-span-2">TOTAL</p>
-                    
+                    <ChevronDown
+                      className={`h-4 w-4 shrink-0 text-slate-400 transition-transform ${showQuotTechniciansDropdown ? "rotate-180" : ""
+                        }`}
+                    />
+                  </button>
+                  {showQuotTechniciansDropdown && (
+                    <div className="absolute z-20 mt-1 w-full rounded-lg border border-slate-200 bg-white p-2 shadow-lg max-h-48 overflow-y-auto">
+                      <div className="grid grid-cols-1 gap-1.5">
+                        {technicianOptions.map((tech) => {
+                          const checked = quotTechnicianIds.includes(tech.id);
+                          return (
+                            <button
+                              key={tech.id}
+                              type="button"
+                              onClick={() =>
+                                setQuotTechnicianIds((prev) =>
+                                  checked
+                                    ? prev.filter((id) => id !== tech.id)
+                                    : [...prev, tech.id]
+                                )
+                              }
+                              className={`flex items-center justify-between rounded-md border px-3 py-2 text-left text-xs transition-colors ${checked
+                                ? "border-brand bg-brand-50/70 text-brand font-semibold"
+                                : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                                }`}
+                            >
+                              <span>{tech.name}</span>
+                              <span
+                                className={`inline-flex h-4 w-4 items-center justify-center rounded border text-[10px] font-bold ${checked
+                                  ? "border-brand bg-brand text-white"
+                                  : "border-slate-300 text-transparent"
+                                  }`}
+                              >
+                                ✓
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
                     </div>
-                    {quotMaterialItems.map((item, index) => (
-                      <div key={index} className="grid grid-cols-12 gap-2">
-                        <input
-                          type="text"
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Step 2: Scope of Work */}
+          <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-xs space-y-3">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <h3 className="flex items-center gap-2 text-sm font-bold text-slate-900 uppercase tracking-wide">
+                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-brand/10 text-xs font-bold text-brand">2</span>
+                Scope & Description of Work
+              </h3>
+            </div>
+            <div>
+              <textarea
+                rows={3}
+                value={quotDescriptionOfWork}
+                onChange={(e) => setQuotDescriptionOfWork(e.target.value)}
+                className="w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 outline-none transition-colors focus:border-brand focus:ring-2 focus:ring-brand/20 resize-y"
+                placeholder="e.g. 6kw Hybrid Solar Setup w/ 300Ah / 51.2v LifePO4 Battery. Design and Installation of 10 high quality Solar Panels/PV Modules with 6kw Power Inverter..."
+              />
+              <p className="mt-1.5 text-xs text-slate-500">
+                This custom scope description will be formatted directly into the <strong>DESCRIPTION OF WORK</strong> table on the generated PDF proposal.
+              </p>
+            </div>
+          </div>
+
+          {/* Step 3: Materials & Equipment Selection */}
+          <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-xs space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <h3 className="flex items-center gap-2 text-sm font-bold text-slate-900 uppercase tracking-wide">
+                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-brand/10 text-xs font-bold text-brand">3</span>
+                Materials & Equipment Breakdown <span className="text-red-500">*</span>
+              </h3>
+              <Button type="button" variant="outline" size="sm" onClick={addMaterialItem}>
+                + Add Line Item
+              </Button>
+            </div>
+
+            <div className="space-y-3">
+              {quotMaterialItems.map((item, index) => {
+                const rowErrors = quotationValidationErrors.find((entry) => entry.index === index)?.errors ?? [];
+                const lineTotal = (Number(item.qty || 0) * Number(item.amt || 0));
+                return (
+                  <div
+                    key={index}
+                    className="rounded-xl border border-slate-200/90 bg-slate-50/60 p-4 transition-all hover:border-slate-300 hover:bg-slate-50 space-y-3"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200/60 pb-2">
+                      <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                        Item #{index + 1}
+                      </span>
+                      {lineTotal > 0 && (
+                        <span className="inline-flex items-center rounded-full bg-emerald-100/80 px-2.5 py-0.5 text-xs font-bold text-emerald-800 border border-emerald-200">
+                          Line Total: ₱{lineTotal.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-3 md:grid-cols-12 items-end">
+                      {/* Material Select */}
+                      <div className="md:col-span-6">
+                        <label className="block text-[11px] font-medium text-slate-600 mb-1">
+                          Select Material / Component
+                        </label>
+                        <select
                           value={item.description}
                           onChange={(e) =>
                             updateMaterialItem(index, "description", e.target.value)
                           }
-                          className="col-span-5 rounded-md border border-slate-200 bg-white px-3 py-2 text-slate-900 outline-none focus:border-brand focus:ring-1 focus:ring-brand"
-                          placeholder="Material description"
-                        />
-                        <div className="col-span-2 flex items-center gap-1">
+                          className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-900 outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
+                        >
+                          <option value="">— Choose from inventory —</option>
+                          {getMaterialSelectOptions(inventoryItems, item.description).map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {/* Quantity Stepper */}
+                      <div className="md:col-span-3">
+                        <label className="block text-[11px] font-medium text-slate-600 mb-1">
+                          Quantity
+                        </label>
+                        <div className="flex items-center gap-1">
                           <button
                             type="button"
-                            onClick={() => updateMaterialItem(index, "qty", item.qty - 1)}
-                            className="h-9 w-9 rounded-md border border-slate-200 text-slate-600 hover:bg-slate-50"
+                            onClick={() => updateMaterialItem(index, "qty", Math.max(0, (item.qty || 1) - 1))}
+                            className="h-8 w-8 shrink-0 rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-100 font-bold text-sm shadow-2xs"
                           >
                             -
                           </button>
                           <input
                             type="number"
-                            min="0"
+                            min="1"
                             value={item.qty}
                             onChange={(e) => updateMaterialItem(index, "qty", e.target.value)}
-                            className="w-full rounded-md border border-slate-200 bg-white px-2 py-2 text-center text-slate-900 outline-none focus:border-brand focus:ring-1 focus:ring-brand"
+                            className="w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-center text-xs font-bold text-slate-900 outline-none focus:border-brand"
                           />
                           <button
                             type="button"
-                            onClick={() => updateMaterialItem(index, "qty", item.qty + 1)}
-                            className="h-9 w-9 rounded-md border border-slate-200 text-slate-600 hover:bg-slate-50"
+                            onClick={() => updateMaterialItem(index, "qty", (item.qty || 0) + 1)}
+                            className="h-8 w-8 shrink-0 rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-100 font-bold text-sm shadow-2xs"
                           >
                             +
                           </button>
                         </div>
-                        <div className="col-span-2 flex items-center gap-1">
-                          <button
-                            type="button"
-                            onClick={() => updateMaterialItem(index, "amt", item.amt - 1)}
-                            className="h-9 w-9 rounded-md border border-slate-200 text-slate-600 hover:bg-slate-50"
-                          >
-                            -
-                          </button>
-                          <input
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            value={item.amt}
-                            onChange={(e) => updateMaterialItem(index, "amt", e.target.value)}
-                            className="w-full rounded-md border border-slate-200 bg-white px-2 py-2 text-center text-slate-900 outline-none focus:border-brand focus:ring-1 focus:ring-brand"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => updateMaterialItem(index, "amt", item.amt + 1)}
-                            className="h-9 w-9 rounded-md border border-slate-200 text-slate-600 hover:bg-slate-50"
-                          >
-                            +
-                          </button>
-                        </div>
+                      </div>
+
+                      {/* Unit Price */}
+                      <div className="md:col-span-2">
+                        <label className="block text-[11px] font-medium text-slate-600 mb-1">
+                          Unit Price (PHP)
+                        </label>
                         <input
                           type="number"
                           min="0"
                           step="0.01"
-                          value={item.total}
-                          onChange={(e) => updateMaterialItem(index, "total", e.target.value)}
-                          className="col-span-2 rounded-md border border-slate-200 bg-white px-2 py-2 text-slate-900 outline-none focus:border-brand focus:ring-1 focus:ring-brand"
+                          value={item.amt}
+                          readOnly
+                          className="w-full rounded-lg border border-slate-200 bg-slate-100 px-2.5 py-1.5 text-center text-xs font-semibold text-slate-700 outline-none"
                         />
+                      </div>
+
+                      {/* Remove Button */}
+                      <div className="md:col-span-1 flex justify-end">
                         <button
                           type="button"
                           onClick={() => removeMaterialItem(index)}
-                          className="col-span-1 rounded-md border border-slate-200 px-2 py-2 text-xs text-slate-600 hover:bg-slate-50"
+                          className="flex h-8 w-8 items-center justify-center rounded-lg border border-red-200 bg-white text-red-600 hover:bg-red-50 font-bold text-xs transition-colors shadow-2xs"
+                          title="Remove item"
                         >
-                          -
+                          ✕
                         </button>
                       </div>
-                    ))}
-                  </div>
+                    </div>
 
-                </div>
-                <div>
-                  <label className="block font-medium text-slate-700">
-                    Total amount (PHP) <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={quotTotal}
-                    onChange={(e) => setQuotTotal(e.target.value)}
-                    className="mt-1.5 w-full rounded-md border border-slate-200 bg-white px-3 py-2 tabular-nums text-slate-900 outline-none focus:border-brand focus:ring-1 focus:ring-brand"
-                    placeholder="0.00"
-                  />
-                </div>
+                    {rowErrors.length > 0 && (
+                      <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs text-amber-700">
+                        {rowErrors.join(" • ")}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </div>
 
-          <div className="flex justify-end gap-2 border-t border-slate-200 pt-4">
+          {/* Step 4: Summary & Payment Breakdown Card */}
+          <div className="rounded-xl border border-emerald-200 bg-gradient-to-br from-emerald-50/80 to-teal-50/50 p-5 space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-emerald-200/60 pb-3">
+              <div>
+                <span className="text-xs font-semibold uppercase tracking-wider text-emerald-800">
+                  Total Proposal Summary
+                </span>
+                <p className="text-xs text-emerald-700">
+                  {quotMaterialItems.filter((i) => i.description).length} material items configured
+                </p>
+              </div>
+              <div className="text-right">
+                <span className="text-xs text-slate-500 block">Total Contract Price</span>
+                <span className="text-2xl font-extrabold text-emerald-800">
+                  ₱{Number(quotTotal || 0).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </span>
+              </div>
+            </div>
+
+            {/* Downpayment Milestone Breakdown */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1 text-xs">
+              <div className="rounded-lg border border-emerald-200/70 bg-white/80 p-3">
+                <span className="font-semibold text-emerald-900 block">1st Payment (50% Downpayment)</span>
+                <span className="text-slate-500 block text-[11px] mt-0.5">Due after Day 1 work completion</span>
+                <span className="text-sm font-bold text-emerald-700 block mt-1">
+                  ₱{(Number(quotTotal || 0) * 0.5).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </span>
+              </div>
+              <div className="rounded-lg border border-emerald-200/70 bg-white/80 p-3">
+                <span className="font-semibold text-emerald-900 block">2nd Payment (50% Final Balance)</span>
+                <span className="text-slate-500 block text-[11px] mt-0.5">Due after completion & testing</span>
+                <span className="text-sm font-bold text-emerald-700 block mt-1">
+                  ₱{(Number(quotTotal || 0) * 0.5).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Action Bar Footer */}
+          <div className="flex items-center justify-between border-t border-slate-200 pt-4">
             <Button
               variant="outline"
               type="button"
@@ -1223,7 +1339,7 @@ export default function TechnicianReportsPage() {
               onClick={() => setShowQuotConfirm(true)}
               disabled={!canCreateQuotation}
             >
-              {editingQuotation ? "Save Changes" : "Submit Quotation"}
+              {editingQuotation ? "Save Proposal Changes" : "Submit Quotation Proposal"}
             </Button>
           </div>
         </div>
@@ -1387,7 +1503,7 @@ export default function TechnicianReportsPage() {
               <Button variant="outline" onClick={() => setDeleteTarget(null)}>
                 Cancel
               </Button>
-              <Button variant="danger" onClick={handleDelete}>
+              <Button variant="danger" onClick={handleDeleteConfirm}>
                 Delete
               </Button>
             </div>
@@ -1413,11 +1529,10 @@ export default function TechnicianReportsPage() {
             </p>
             <div className="flex gap-3">
               <label
-                className={`flex-1 rounded-lg border p-3 text-center text-sm font-medium transition-colors ${
-                  sendTarget === "admin"
-                    ? "border-brand bg-brand/5 text-brand"
-                    : "cursor-pointer border-slate-200 text-slate-600 hover:bg-slate-50"
-                }`}
+                className={`flex-1 rounded-lg border p-3 text-center text-sm font-medium transition-colors ${sendTarget === "admin"
+                  ? "border-brand bg-brand/5 text-brand"
+                  : "cursor-pointer border-slate-200 text-slate-600 hover:bg-slate-50"
+                  }`}
               >
                 <input
                   type="radio"
@@ -1432,13 +1547,12 @@ export default function TechnicianReportsPage() {
                 Admin
               </label>
               <label
-                className={`flex-1 rounded-lg border p-3 text-center text-sm font-medium transition-colors ${
-                  !canSendSelectedReportToClient
-                    ? "cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400"
-                    : sendTarget === "client"
+                className={`flex-1 rounded-lg border p-3 text-center text-sm font-medium transition-colors ${!canSendSelectedReportToClient
+                  ? "cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400"
+                  : sendTarget === "client"
                     ? "border-brand bg-brand/5 text-brand"
                     : "cursor-pointer border-slate-200 text-slate-600 hover:bg-slate-50"
-                }`}
+                  }`}
               >
                 <input
                   type="radio"
@@ -1462,7 +1576,7 @@ export default function TechnicianReportsPage() {
                   aria-hidden
                 />
                 <span>
-                This must be reviewed by the admin prior to enabling client unlock requests.
+                  This must be reviewed by the admin prior to enabling client unlock requests.
                 </span>
               </p>
             )}
